@@ -32,7 +32,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
   const [newName, setNewName] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newTtl, setNewTtl] = useState(300);
-  const [newPriority, setNewPriority] = useState(10);
+  const [newPriority] = useState(10);
   const [statusMessage, setStatusMessage] = useState('');
 
   if (!isOpen) return null;

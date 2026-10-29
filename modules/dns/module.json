@@ -1,0 +1,21 @@
+{
+  "name": "dns",
+  "version": "1.0.0",
+  "title": "PowerDNS Zone Manager",
+  "description": "High-performance DNS cluster engine with DNSSEC, health checks, and Cloudflare sync.",
+  "permissions": [
+    "dns.read",
+    "dns.write",
+    "dns.delete",
+    "dns.sec"
+  ],
+  "hooks": [
+    "dns.record_added",
+    "dns.record_updated",
+    "dns.zone_signed"
+  ],
+  "menu": {
+    "section": "domains",
+    "priority": 20
+  }
+}

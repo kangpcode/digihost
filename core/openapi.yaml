@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: DigiPanel Core REST API
+  description: API specification for DigiPanel Linux Server Automation, Fleet Management, and Native Billing.
+  version: 1.0.0
+servers:
+  - url: https://panel.digihost.id/api/v1
+    description: Production Panel Gateway
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user credentials and issue scoped JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                totpCode:
+                  type: string
+      responses:
+        '200':
+          description: Session token and user persona profile
+        '401':
+          description: Invalid credentials or invalid 2FA token
+
+  /hosting/accounts:
+    get:
+      summary: List all hosting accounts
+      responses:
+        '200':
+          description: Array of hosting accounts
+    post:
+      summary: Atomic creation of POSIX user, home dir, vhost, php-fpm pool, and DNS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain, username, password, plan]
+              properties:
+                domain:
+                  type: string
+                username:
+                  type: string
+                password:
+                  type: string
+                plan:
+                  type: string
+                phpVersion:
+                  type: string
+      responses:
+        '201':
+          description: Account created successfully
+
+  /cluster/fleet:
+    get:
+      summary: Retrieve real-time telemetry from all connected fleet nodes
+      responses:
+        '200':
+          description: Cluster node status, metrics, and service health matrix
+
+  /dns/zones/{domain}/records:
+    get:
+      summary: Retrieve all DNS records for a zone
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DNS record list
+    post:
+      summary: Add record to PowerDNS zone
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, name, content, ttl]
+              properties:
+                type:
+                  type: string
+                  enum: [A, AAAA, CNAME, MX, TXT, SRV, CAA]
+                name:
+                  type: string
+                content:
+                  type: string
+                ttl:
+                  type: integer
+      responses:
+        '201':
+          description: Record committed and zone serial incremented
+
+  /billing/invoices:
+    get:
+      summary: List billing invoices
+      responses:
+        '200':
+          description: Invoice list

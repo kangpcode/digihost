@@ -25,7 +25,7 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
 
   const [activeTab, setActiveTab] = useState<'invoices' | 'ledger' | 'plans'>('invoices');
 
-  const [invoices, setInvoices] = useState<BillingInvoice[]>([
+  const [invoices] = useState<BillingInvoice[]>([
     {
       id: 'inv-1001',
       invoiceNumber: 'INV-2026-0042',

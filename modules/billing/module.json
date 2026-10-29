@@ -1,0 +1,22 @@
+{
+  "name": "billing",
+  "version": "1.0.0",
+  "title": "Native Hosting Billing & Automations",
+  "description": "Double-entry accounting, catalog management, invoice generation, and autonomous provisioning hooks.",
+  "permissions": [
+    "billing.invoices.read",
+    "billing.invoices.write",
+    "billing.ledger.read",
+    "billing.gateways.manage"
+  ],
+  "hooks": [
+    "order.created",
+    "invoice.paid",
+    "service.provisioned",
+    "service.suspended"
+  ],
+  "menu": {
+    "section": "billing",
+    "priority": 30
+  }
+}

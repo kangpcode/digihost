@@ -1,0 +1,21 @@
+{
+  "name": "hosting",
+  "version": "1.0.0",
+  "title": "Hosting Services Core",
+  "description": "Atomic account provisioning, Nginx/OpenLiteSpeed vhosts, PHP-FPM pools, and cgroups v2 resource limits.",
+  "permissions": [
+    "accounts.read",
+    "accounts.create",
+    "accounts.suspend",
+    "accounts.delete"
+  ],
+  "hooks": [
+    "account.created",
+    "account.suspended",
+    "account.terminated"
+  ],
+  "menu": {
+    "section": "hosting",
+    "priority": 10
+  }
+}
