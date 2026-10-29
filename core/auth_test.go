@@ -37,7 +37,7 @@ func TestPublicRoutesPermitted(t *testing.T) {
 	// 2. POST /api/v1/auth/login with valid credentials
 	body, _ := json.Marshal(map[string]string{
 		"username": "admin",
-		"password": "admin123",
+		"password": testAdminPassword,
 	})
 	req, _ = http.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -83,7 +83,7 @@ func TestAuthenticatedAccessAllowed(t *testing.T) {
 	handler := setupTestServer()
 
 	req, _ := http.NewRequest("GET", "/api/v1/auth/me", nil)
-	req.Header.Set("Authorization", "Bearer "+TestAuthToken)
+	req.Header.Set("Authorization", "Bearer "+adminToken(t, handler))
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 

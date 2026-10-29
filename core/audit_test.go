@@ -38,8 +38,14 @@ func TestAuditLogHashChaining(t *testing.T) {
 	}
 
 	handler := NewServerHandler(state)
+	token := adminToken(t, handler)
+
+	// The credential exchange is itself audited, so the read below must show the
+	// two application events plus the login that authorised it.
+	expected := len(state.AuditLogger.GetEntries())
+
 	req, _ := http.NewRequest("GET", "/api/v1/audit/logs", nil)
-	req.Header.Set("Authorization", "Bearer "+TestAuthToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -49,8 +55,8 @@ func TestAuditLogHashChaining(t *testing.T) {
 	}
 	_ = json.NewDecoder(rr.Body).Decode(&resp)
 
-	if !resp.IsChainValid || resp.Count != 3 {
-		t.Errorf("Expected chain valid with 3 entries, got valid=%v count=%d", resp.IsChainValid, resp.Count)
+	if !resp.IsChainValid || resp.Count != expected {
+		t.Errorf("Expected chain valid with %d entries, got valid=%v count=%d", expected, resp.IsChainValid, resp.Count)
 	}
 }
 

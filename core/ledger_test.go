@@ -21,7 +21,7 @@ func TestDoubleEntryLedgerBalance(t *testing.T) {
 	handler := NewServerHandler(state)
 
 	req, _ := http.NewRequest("GET", "/api/v1/billing/ledger", nil)
-	req.Header.Set("Authorization", "Bearer "+TestAuthToken)
+	req.Header.Set("Authorization", "Bearer "+adminToken(t, handler))
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -64,7 +64,7 @@ func TestUnbalancedLedgerDetection(t *testing.T) {
 	handler := NewServerHandler(state)
 
 	req, _ := http.NewRequest("GET", "/api/v1/billing/ledger", nil)
-	req.Header.Set("Authorization", "Bearer "+TestAuthToken)
+	req.Header.Set("Authorization", "Bearer "+adminToken(t, handler))
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 

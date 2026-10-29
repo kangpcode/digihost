@@ -23,32 +23,40 @@ import { getTranslation } from '../i18n/translations';
 interface AdminDashboardProps {
   accounts: HostingAccount[];
   systemMetrics: SystemMetrics;
+  resellerCount: number;
   language: Language;
   onOpenNewAccount: () => void;
   onOpenDnsEditor: (domain?: string) => void;
+  onOpenSslManager: () => void;
   onSwitchToUser: (username: string) => void;
   onToggleSuspend: (accountId: string) => void;
-  onViewCluster: () => void;
+  onViewAccounts: () => void;
+  onViewResellers: () => void;
+  onViewMetrics: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   accounts,
   systemMetrics,
+  resellerCount,
   language,
   onOpenNewAccount,
   onOpenDnsEditor,
+  onOpenSslManager,
   onSwitchToUser,
   onToggleSuspend,
-  onViewCluster
+  onViewAccounts,
+  onViewResellers,
+  onViewMetrics
 }) => {
   const [showWelcome, setShowWelcome] = useState(true);
 
   const t = (key: any) => getTranslation(language, key);
 
   const totalHostingAccounts = accounts.length;
-  const totalDomains = accounts.reduce((acc, curr) => acc + (curr.domain ? 1 : 0), 0);
-  const totalDatabases = accounts.reduce((acc, curr) => acc + curr.databasesCount, 0);
-  const totalResellers = 4;
+  const totalDomains = accounts.filter((account) => account.domain).length;
+  const totalActive = accounts.filter((account) => account.status === 'active').length;
+  const totalResellers = resellerCount;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -239,7 +247,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* 2. All Accounts */}
           <div 
-            onClick={onOpenNewAccount}
+            onClick={onViewAccounts}
             className="glass-card" 
             style={{
               padding: '20px 16px',
@@ -303,7 +311,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* 4. Resellers */}
           <div 
-            onClick={onViewCluster}
+            onClick={onViewResellers}
             className="glass-card" 
             style={{
               padding: '20px 16px',
@@ -335,7 +343,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* 5. Metrics */}
           <div 
-            onClick={onViewCluster}
+            onClick={onViewMetrics}
             className="glass-card" 
             style={{
               padding: '20px 16px',
@@ -367,7 +375,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* 6. SSL Certificates */}
           <div 
-            onClick={() => onOpenDnsEditor()}
+            onClick={onOpenSslManager}
             className="glass-card" 
             style={{
               padding: '20px 16px',
@@ -463,7 +471,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* 3. Databases */}
+        {/* 3. Active Accounts */}
         <div className="glass-card" style={{
           padding: '20px 24px',
           display: 'flex',
@@ -472,10 +480,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }}>
           <div>
             <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricDatabases')}
+              {t('metricActiveAccounts')}
             </div>
             <div className="font-mono" style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-main)' }}>
-              {totalDatabases}
+              {totalActive}
             </div>
           </div>
           <div style={{
@@ -618,7 +626,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </h3>
             </div>
             <button 
-              onClick={onOpenNewAccount}
+              onClick={onViewAccounts}
               className="btn btn-secondary btn-sm"
             >
               {t('viewAll')}

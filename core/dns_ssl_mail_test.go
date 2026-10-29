@@ -22,7 +22,7 @@ import (
 func getAdminToken(t *testing.T, handler http.Handler) string {
 	loginBody, _ := json.Marshal(map[string]string{
 		"username": "admin",
-		"password": "admin123",
+		"password": testAdminPassword,
 	})
 	req, _ := http.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(loginBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -122,6 +122,23 @@ func TestSslRestAPI(t *testing.T) {
 	_ = json.Unmarshal(rrIssue.Body.Bytes(), &cert)
 	if cert.Domain != "secure-portal.id" || cert.Status != ssl.StatusValid {
 		t.Errorf("Invalid certificate returned: %+v", cert)
+	}
+
+	// A second certificate so the AutoSSL sweep below has more than one entry.
+	secondPayload, _ := json.Marshal(ssl.IssueRequest{
+		Domain:    "billing-portal.id",
+		SANs:      []string{"www.billing-portal.id"},
+		Provider:  ssl.ProviderLetsEncrypt,
+		Challenge: ssl.ChallengeHTTP01,
+		AutoRenew: true,
+	})
+	reqSecond, _ := http.NewRequest("POST", "/api/v1/ssl/issue", bytes.NewReader(secondPayload))
+	reqSecond.Header.Set("Authorization", "Bearer "+token)
+	reqSecond.Header.Set("Content-Type", "application/json")
+	rrSecond := httptest.NewRecorder()
+	handler.ServeHTTP(rrSecond, reqSecond)
+	if rrSecond.Code != http.StatusCreated {
+		t.Fatalf("Failed to issue second certificate: code %d, body: %s", rrSecond.Code, rrSecond.Body.String())
 	}
 
 	// 2. Force Certificate Renewal

@@ -1,8 +1,8 @@
-// DigiPanel Master Web Application Shell
-// Zero emojis, strictly Lucide SVG iconography, modern glass architecture
-// Full-width non-overlapping layout with live backend API telemetry
+// DigiPanel application shell.
+// Every view renders live core API data. No sample accounts, nodes, or metrics
+// exist in this layer.
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -20,18 +20,80 @@ import { TerminalModal } from './components/TerminalModal';
 import { ResellerDashboard } from './components/ResellerDashboard';
 import { SslManagerModal } from './components/SslManagerModal';
 import { MailManagerModal } from './components/MailManagerModal';
-import type { UserRole, Language, ThemeMode, HostingAccount, ClusterNode, SystemMetrics } from './types';
+import { AccountsListView } from './components/AccountsListView';
+import { PlansView } from './components/PlansView';
+import { ResellersView } from './components/ResellersView';
+import { DnsClusterView } from './components/DnsClusterView';
+import { ServerStatusView } from './components/ServerStatusView';
+import { AuditLogView } from './components/AuditLogView';
+import { AccountLogsView } from './components/AccountLogsView';
+import { apiFetch, logout, readSession, setUnauthorizedHandler, type SessionToken } from './api/client';
+import { LoginView } from './components/LoginView';
+import { getTranslation } from './i18n/translations';
+import type {
+  UserRole,
+  Language,
+  ThemeMode,
+  HostingAccount,
+  ApiAccount,
+  FleetNode,
+  FleetResponse,
+  ServiceResponse,
+  ServiceStatus,
+  Telemetry,
+  SystemMetrics
+} from './types';
+
+const emptyMetrics: SystemMetrics = {
+  hostname: '',
+  kernel: '',
+  os: '',
+  uptime: '',
+  loadAverage: [0, 0, 0],
+  cpuUsagePercent: 0,
+  memoryUsedMb: 0,
+  memoryTotalMb: 0,
+  diskUsedGb: 0,
+  diskTotalGb: 0,
+  activeProcesses: 0
+};
+
+const bytesToMb = (bytes: number): number => Math.round((bytes / (1024 * 1024)) * 100) / 100;
+
+const toViewAccount = (account: ApiAccount): HostingAccount => ({
+  id: account.id,
+  username: account.username,
+  domain: account.primaryDomain,
+  plan: account.packageId,
+  diskUsageMb: bytesToMb(account.diskUsedBytes),
+  diskLimitMb: bytesToMb(account.diskLimitBytes),
+  bandwidthUsageMb: bytesToMb(account.bandwidthUsedBytes),
+  bandwidthLimitMb: bytesToMb(account.bandwidthLimitBytes),
+  inodesCount: account.inodesUsed,
+  inodesLimit: account.inodesLimit,
+  status: account.status === 'suspended' ? 'suspended' : account.status === 'terminated' ? 'terminated' : 'active',
+  phpVersion: account.phpVersion,
+  ipAddress: account.ipAddress,
+  homeDir: account.homeDir,
+  createdAt: account.createdAt ? account.createdAt.slice(0, 10) : ''
+});
+
+const roleFromSession = (role: string | undefined): UserRole => {
+  if (role === 'admin' || role === 'reseller' || role === 'user') return role;
+  // Staff accounts operate the admin surface with the permissions the core
+  // grants their role.
+  return 'admin';
+};
 
 export const App: React.FC = () => {
-  // Theme and Persona State
   const [theme, setTheme] = useState<ThemeMode>('light');
-  const [currentRole, setCurrentRole] = useState<UserRole>('admin');
+  const [session, setSession] = useState<SessionToken | null>(() => readSession());
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => roleFromSession(readSession()?.role));
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [language, setLanguage] = useState<Language>('en');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserCategory, setSelectedUserCategory] = useState('all');
 
-  // Interactive Modals State
   const [isDnsEditorOpen, setIsDnsEditorOpen] = useState(false);
   const [isNewAccountOpen, setIsNewAccountOpen] = useState(false);
   const [isFileManagerOpen, setIsFileManagerOpen] = useState(false);
@@ -40,389 +102,363 @@ export const App: React.FC = () => {
   const [isSslManagerOpen, setIsSslManagerOpen] = useState(false);
   const [isMailManagerOpen, setIsMailManagerOpen] = useState(false);
 
-  // Sidebar entries that open a manager modal instead of switching the main view
-  const handleViewChange = (view: string) => {
-    if (view === 'dns') { setIsDnsEditorOpen(true); return; }
-    if (view === 'ssl') { setIsSslManagerOpen(true); return; }
-    if (view === 'mail') { setIsMailManagerOpen(true); return; }
-    setActiveView(view);
-  };
+  const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
+  const [accounts, setAccounts] = useState<ApiAccount[]>([]);
+  const [nodes, setNodes] = useState<FleetNode[]>([]);
+  const [services, setServices] = useState<ServiceStatus[]>([]);
+  const [servicesAvailable, setServicesAvailable] = useState(false);
+  const [resellerCount, setResellerCount] = useState(0);
+  const [activeAccount, setActiveAccount] = useState<ApiAccount | null>(null);
+  const [panelVersion, setPanelVersion] = useState('');
+  const [loadError, setLoadError] = useState('');
 
-  // Apply theme to document element
+  const t = (key: any) => getTranslation(language, key);
+
+  const viewAccounts = useMemo(() => accounts.map(toViewAccount), [accounts]);
+
+  const systemMetrics = useMemo<SystemMetrics>(() => {
+    if (!telemetry) return emptyMetrics;
+    return {
+      hostname: telemetry.hostname,
+      kernel: telemetry.kernel,
+      os: telemetry.os,
+      uptime: telemetry.uptime,
+      loadAverage: [
+        telemetry.loadAverage?.[0] ?? 0,
+        telemetry.loadAverage?.[1] ?? 0,
+        telemetry.loadAverage?.[2] ?? 0
+      ],
+      cpuUsagePercent: telemetry.cpuUsagePercent,
+      memoryUsedMb: telemetry.memoryUsedMb,
+      memoryTotalMb: telemetry.memoryTotalMb,
+      diskUsedGb: Math.round(telemetry.diskUsedGb * 10) / 10,
+      diskTotalGb: Math.round(telemetry.diskTotalGb * 10) / 10,
+      activeProcesses: telemetry.activeProcesses
+    };
+  }, [telemetry]);
+
+  const loadTelemetry = useCallback(async () => {
+    try {
+      const data = await apiFetch<Telemetry>('/api/v1/system/telemetry');
+      setTelemetry(data);
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, []);
+
+  const loadHostingData = useCallback(async () => {
+    const [accountResult, fleetResult, resellerResult, serviceResult] = await Promise.allSettled([
+      apiFetch<ApiAccount[]>('/api/v1/hosting/accounts'),
+      apiFetch<FleetResponse>('/api/v1/cluster/fleet'),
+      apiFetch<Array<{ username: string }>>('/api/v1/users?role=reseller'),
+      apiFetch<ServiceResponse>('/api/v1/system/services')
+    ]);
+
+    if (accountResult.status === 'fulfilled') {
+      const list = Array.isArray(accountResult.value) ? accountResult.value : [];
+      setAccounts(list);
+      setActiveAccount((current) => {
+        if (current) {
+          const refreshed = list.find((item) => item.username === current.username);
+          return refreshed ?? list[0] ?? null;
+        }
+        return list[0] ?? null;
+      });
+    } else {
+      setLoadError(accountResult.reason instanceof Error ? accountResult.reason.message : String(accountResult.reason));
+    }
+
+    if (fleetResult.status === 'fulfilled') {
+      setNodes(Array.isArray(fleetResult.value.nodes) ? fleetResult.value.nodes : []);
+    }
+    if (resellerResult.status === 'fulfilled') {
+      setResellerCount(Array.isArray(resellerResult.value) ? resellerResult.value.length : 0);
+    }
+    if (serviceResult.status === 'fulfilled') {
+      setServices(Array.isArray(serviceResult.value.services) ? serviceResult.value.services : []);
+      setServicesAvailable(true);
+    } else {
+      setServices([]);
+      setServicesAvailable(false);
+    }
+  }, []);
+
+  const reload = useCallback(async () => {
+    setLoadError('');
+    await Promise.all([loadTelemetry(), loadHostingData()]);
+  }, [loadHostingData, loadTelemetry]);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Keyboard shortcut listener for search '/'
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === '/' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-        searchInput?.focus();
-      }
+    setUnauthorizedHandler(() => {
+      setSession(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    setCurrentRole(roleFromSession(session.role));
+  }, [session]);
+
+  useEffect(() => {
+    apiFetch<{ version: string }>('/api/v1/health')
+      .then((data) => setPanelVersion(data.version || ''))
+      .catch(() => setPanelVersion(''));
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    void reload();
+    const interval = window.setInterval(() => {
+      void loadTelemetry();
+    }, 10000);
+    return () => window.clearInterval(interval);
+  }, [reload, loadTelemetry, session]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '/') return;
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      event.preventDefault();
+      const input = document.querySelector('input[type="text"]') as HTMLInputElement | null;
+      input?.focus();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // System Metrics Telemetry Data (Real Host Linux Telemetry)
-  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics>({
-    hostname: 'Mybook-Hype-5-AMD-X6',
-    kernel: 'Linux 7.0.0-38-generic (amd64)',
-    os: 'Ubuntu 26.04.1 LTS',
-    uptime: '1 hour, 45 mins',
-    loadAverage: [0.84, 0.97, 1.09],
-    cpuUsagePercent: 6.9,
-    memoryUsedMb: 7982,
-    memoryTotalMb: 13190,
-    diskUsedGb: 183.8,
-    diskTotalGb: 467.3,
-    activeProcesses: 144
-  });
+  const handleViewChange = (view: string) => {
+    if (view === 'dns' || view === 'domains') { setIsDnsEditorOpen(true); return; }
+    if (view === 'ssl' || view === 'security') { setIsSslManagerOpen(true); return; }
+    if (view === 'mail' || view === 'emails') { setIsMailManagerOpen(true); return; }
+    if (view === 'files') { setIsFileManagerOpen(true); return; }
+    if (view === 'advanced') { setActiveView('access_logs'); return; }
+    setActiveView(view);
+  };
 
-  // Fetch real system telemetry from backend API
-  const fetchTelemetry = async () => {
+  const handleSignedIn = () => {
+    const next = readSession();
+    setSession(next);
+    const role = roleFromSession(next?.role);
+    setCurrentRole(role);
+    setActiveView(role === 'user' ? 'home' : 'dashboard');
+    void reload();
+  };
+
+  const handleSignOut = async () => {
+    await logout();
+    setSession(null);
+    setAccounts([]);
+    setNodes([]);
+    setServices([]);
+    setActiveAccount(null);
+  };
+
+  const handleAccountCreated = () => {
+    void reload();
+  };
+
+  const handleToggleSuspend = async (accountId: string) => {
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    const action = account.status === 'suspended' ? 'unsuspend' : 'suspend';
     try {
-      const res = await fetch('/api/v1/system/telemetry');
-      if (res.ok) {
-        const data = await res.json();
-        setSystemMetrics({
-          hostname: data.hostname,
-          kernel: data.kernel,
-          os: data.os,
-          uptime: data.uptime,
-          loadAverage: [
-            data.loadAverage?.[0] || 0.84,
-            data.loadAverage?.[1] || 0.97,
-            data.loadAverage?.[2] || 1.09
-          ],
-          cpuUsagePercent: data.cpuUsagePercent || 6.9,
-          memoryUsedMb: data.memoryUsedMb || 7982,
-          memoryTotalMb: data.memoryTotalMb || 13190,
-          diskUsedGb: Math.round((data.diskUsedGb || 183.8) * 10) / 10,
-          diskTotalGb: Math.round((data.diskTotalGb || 467.3) * 10) / 10,
-          activeProcesses: data.activeProcesses || 144
-        });
-      }
-    } catch {
-      // Keep state
+      await apiFetch(`/api/v1/hosting/accounts/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ username: account.username })
+      });
+      await reload();
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
-  useEffect(() => {
-    fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Hosting Accounts Data
-  const [accounts, setAccounts] = useState<HostingAccount[]>([
-    {
-      id: 'acc-1',
-      username: 'testuser',
-      domain: 'testuser.digipanel.live',
-      plan: 'Starter Cloud',
-      diskUsageMb: 0.06,
-      diskLimitMb: 50,
-      bandwidthUsageMb: 1420,
-      bandwidthLimitMb: 51200,
-      databasesCount: 2,
-      databasesLimit: 10,
-      emailCount: 4,
-      emailLimit: 20,
-      inodesCount: 3727,
-      inodesLimit: 100000,
-      status: 'active',
-      phpVersion: '8.3',
-      ipAddress: '103.189.201.42',
-      createdAt: '2026-10-15',
-      sslActive: true
-    },
-    {
-      id: 'acc-2',
-      username: 'demoadmin',
-      domain: 'demoadmin.directadmin.com',
-      plan: 'Pro Developer',
-      diskUsageMb: 141.2,
-      diskLimitMb: 5120,
-      bandwidthUsageMb: 8400,
-      bandwidthLimitMb: 102400,
-      databasesCount: 4,
-      databasesLimit: 25,
-      emailCount: 8,
-      emailLimit: 50,
-      inodesCount: 14200,
-      inodesLimit: 250000,
-      status: 'active',
-      phpVersion: '8.2',
-      ipAddress: '103.189.201.43',
-      createdAt: '2026-09-20',
-      sslActive: true
-    },
-    {
-      id: 'acc-3',
-      username: 'demoreseller',
-      domain: 'demoreseller.directadmin.com',
-      plan: 'Reseller Tier 1',
-      diskUsageMb: 38.3,
-      diskLimitMb: 10240,
-      bandwidthUsageMb: 2400,
-      bandwidthLimitMb: 204800,
-      databasesCount: 1,
-      databasesLimit: 100,
-      emailCount: 2,
-      emailLimit: 100,
-      inodesCount: 8900,
-      inodesLimit: 500000,
-      status: 'active',
-      phpVersion: '8.3',
-      ipAddress: '103.189.201.44',
-      createdAt: '2026-08-11',
-      sslActive: true
-    },
-    {
-      id: 'acc-4',
-      username: 'infogest',
-      domain: 'demo.com',
-      plan: 'Starter Cloud',
-      diskUsageMb: 0.8,
-      diskLimitMb: 1000,
-      bandwidthUsageMb: 195,
-      bandwidthLimitMb: 10240,
-      databasesCount: 0,
-      databasesLimit: 5,
-      emailCount: 1,
-      emailLimit: 10,
-      inodesCount: 520,
-      inodesLimit: 50000,
-      status: 'active',
-      phpVersion: '8.1',
-      ipAddress: '103.189.201.45',
-      createdAt: '2026-10-24',
-      sslActive: false
-    }
-  ]);
-
-  // Cluster Fleet Nodes Data (Matching Image 3)
-  const [clusterNodes, setClusterNodes] = useState<ClusterNode[]>([
-    {
-      id: 'node-hub',
-      name: 'Production Fleet',
-      hostname: 'hub-master.id',
-      ipAddress: '45.76.95.149',
-      role: 'hub',
-      status: 'online',
-      panelVersion: 'v1.2.0',
-      cpuPercent: 2,
-      ramPercent: 30,
-      diskPercent: 3,
-      inventory: { accounts: 24, domains: 38, databases: 19, resellers: 4 },
-      services: {
-        web: true,
-        ftp: true,
-        dns: true,
-        db: true,
-        fail2ban: true,
-        nftables: true,
-        securebox: true,
-        postfix: true,
-        dovecot: true,
-        rspamd: true,
-        mlmmj: true
-      }
-    },
-    {
-      id: 'node-db',
-      name: 'db-01.fra',
-      hostname: 'db-01.fra.digihost.id',
-      ipAddress: '192.248.183.12',
-      role: 'database',
-      status: 'online',
-      panelVersion: 'v1.2.0',
-      cpuPercent: 3,
-      ramPercent: 29,
-      diskPercent: 3,
-      inventory: { accounts: 0, domains: 0, databases: 19, resellers: 0 },
-      services: {
-        web: true,
-        ftp: true,
-        dns: true,
-        db: true,
-        fail2ban: true,
-        nftables: true,
-        securebox: true,
-        postfix: true,
-        dovecot: true,
-        rspamd: true,
-        mlmmj: true
-      }
-    },
-    {
-      id: 'node-edge',
-      name: 'web-edge-01.sin',
-      hostname: 'web-edge-01.sin.digihost.id',
-      ipAddress: '139.180.211.88',
-      role: 'edge',
-      status: 'online',
-      panelVersion: 'v1.2.0',
-      cpuPercent: 5,
-      ramPercent: 32,
-      diskPercent: 7,
-      inventory: { accounts: 12, domains: 18, databases: 0, resellers: 0 },
-      services: {
-        web: true,
-        ftp: true,
-        dns: true,
-        db: false,
-        fail2ban: true,
-        nftables: true,
-        securebox: true,
-        postfix: true,
-        dovecot: true,
-        rspamd: true,
-        mlmmj: false
-      }
-    }
-  ]);
-
-  // Account Operations
-  const handleAccountCreated = (newAcc: HostingAccount) => {
-    setAccounts([newAcc, ...accounts]);
-  };
-
-  const handleToggleSuspend = (accountId: string) => {
-    setAccounts(accounts.map(acc => {
-      if (acc.id === accountId) {
-        return {
-          ...acc,
-          status: acc.status === 'active' ? 'suspended' : 'active'
-        };
-      }
-      return acc;
-    }));
-  };
-
-  const handleSwitchToUser = (_username: string) => {
+  const handleSwitchToUser = (username: string) => {
+    const account = accounts.find((item) => item.username === username) ?? null;
+    setActiveAccount(account);
     setCurrentRole('user');
     setActiveView('home');
   };
 
-  const handleLoginNode = (_nodeId: string) => {
-    setIsTerminalOpen(true);
-  };
+  const activeViewAccount = useMemo(
+    () => (activeAccount ? toViewAccount(activeAccount) : null),
+    [activeAccount]
+  );
+
+  const notifications = useMemo(() => {
+    const down = services
+      .filter((service) => service.installed && !service.active)
+      .map((service) => ({
+        title: `${service.name} (${service.unit})`,
+        detail: `${t('headerServiceDown')}: ${service.state}`
+      }));
+    return down;
+  }, [services, language]);
+
+  const displayName = session?.username || '';
+
+  if (!session) {
+    return (
+      <LoginView
+        language={language}
+        onLanguageChange={(lang) => setLanguage(lang)}
+        theme={theme}
+        onThemeToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onSignedIn={handleSignedIn}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
-      {/* 1. Full-Width Top Navigation Bar (No Overlap) */}
-      <Header 
+      <Header
         currentRole={currentRole}
-        onRoleChange={(r) => {
-          setCurrentRole(r);
-          if (r === 'admin' || r === 'reseller') setActiveView('dashboard');
-          else setActiveView('home');
-        }}
+        onSignOut={() => void handleSignOut()}
         activeView={activeView}
         onViewChange={handleViewChange}
         language={language}
-        onLanguageChange={(l) => setLanguage(l)}
+        onLanguageChange={(lang) => setLanguage(lang)}
         theme={theme}
         onThemeToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         searchQuery={searchQuery}
-        onSearchChange={(q) => setSearchQuery(q)}
+        onSearchChange={(query) => setSearchQuery(query)}
         onOpenTerminal={() => setIsTerminalOpen(true)}
+        displayName={displayName}
+        notifications={notifications}
       />
 
-      {/* 2. Main Body Container with Sidebar and Content */}
       <div className="app-body">
-        {/* Left Navigation Sidebar docked directly beneath Header */}
-        <Sidebar 
+        <Sidebar
           currentRole={currentRole}
           activeView={activeView}
           onViewChange={handleViewChange}
           language={language}
-          onSelectCategory={(cat) => setSelectedUserCategory(cat)}
+          onSelectCategory={(category) => setSelectedUserCategory(category)}
           selectedCategory={selectedUserCategory}
+          hostname={systemMetrics.hostname}
+          kernel={systemMetrics.kernel}
+          panelVersion={panelVersion}
         />
 
-        {/* Content Area */}
         <main className="content-area">
           <div className="content-inner">
-            {/* Admin Dashboard (Image 2) */}
+            {loadError ? (
+              <div className="glass-card" style={{ padding: '10px 14px', marginBottom: '16px', fontSize: '0.82rem', borderColor: 'rgba(239, 68, 68, 0.35)' }}>
+                {loadError}
+              </div>
+            ) : null}
+
             {currentRole === 'admin' && activeView === 'dashboard' && (
-              <AdminDashboard 
-                accounts={accounts}
+              <AdminDashboard
+                accounts={viewAccounts}
                 systemMetrics={systemMetrics}
+                resellerCount={resellerCount}
                 language={language}
                 onOpenNewAccount={() => setIsNewAccountOpen(true)}
                 onOpenDnsEditor={() => setIsDnsEditorOpen(true)}
+                onOpenSslManager={() => setIsSslManagerOpen(true)}
                 onSwitchToUser={handleSwitchToUser}
-                onToggleSuspend={handleToggleSuspend}
-                onViewCluster={() => setActiveView('cluster')}
+                onToggleSuspend={(id) => void handleToggleSuspend(id)}
+                onViewAccounts={() => setActiveView('accounts_list')}
+                onViewResellers={() => setActiveView('resellers_list')}
+                onViewMetrics={() => setActiveView('server_status')}
               />
             )}
 
-            {/* Reseller Dashboard: scoped to accounts owned by the reseller */}
-            {currentRole === 'reseller' && (activeView === 'dashboard' || activeView === 'accounts_list') && (
+            {(currentRole === 'reseller') && (activeView === 'dashboard' || activeView === 'accounts_list') && (
               <ResellerDashboard
-                accounts={accounts}
+                accounts={viewAccounts}
                 language={language}
                 onOpenNewAccount={() => setIsNewAccountOpen(true)}
                 onOpenDnsEditor={() => setIsDnsEditorOpen(true)}
                 onOpenSslManager={() => setIsSslManagerOpen(true)}
                 onOpenMailManager={() => setIsMailManagerOpen(true)}
                 onSwitchToUser={handleSwitchToUser}
-                onToggleSuspend={handleToggleSuspend}
+                onToggleSuspend={(id) => void handleToggleSuspend(id)}
               />
             )}
 
-            {/* Cluster Fleet Dashboard (Image 3) */}
+            {currentRole === 'admin' && activeView === 'accounts_list' && (
+              <AccountsListView language={language} onOpenNewAccount={() => setIsNewAccountOpen(true)} />
+            )}
+
+            {(currentRole === 'admin' || currentRole === 'reseller') && activeView === 'plans' && (
+              <PlansView language={language} canManage={currentRole === 'admin'} />
+            )}
+
+            {currentRole === 'admin' && activeView === 'resellers_list' && (
+              <ResellersView language={language} />
+            )}
+
+            {currentRole === 'admin' && activeView === 'dns_cluster' && (
+              <DnsClusterView language={language} />
+            )}
+
             {currentRole === 'admin' && activeView === 'cluster' && (
-              <ClusterFleetDashboard 
-                nodes={clusterNodes}
-                language={language}
-                onConnectNode={() => setIsTerminalOpen(true)}
-                onRefreshFleet={() => {
-                  setClusterNodes([...clusterNodes]);
+              <ClusterFleetDashboard
+                nodes={nodes}
+                telemetry={telemetry}
+                services={services}
+                servicesAvailable={servicesAvailable}
+                inventory={{
+                  accounts: accounts.length,
+                  domains: accounts.filter((account) => account.primaryDomain).length,
+                  databases: 0,
+                  resellers: resellerCount
                 }}
-                onOpenTerminal={() => setIsTerminalOpen(true)}
-                onLoginNode={handleLoginNode}
-              />
-            )}
-
-            {/* Runtimes & Applications Manager (Node.js, Python, Go, PHP) */}
-            {activeView === 'runtimes' && (
-              <RuntimesManagerView 
                 language={language}
+                onRefreshFleet={() => void reload()}
                 onOpenTerminal={() => setIsTerminalOpen(true)}
               />
             )}
 
-            {/* Application Marketplace (Softaculous-style installer) */}
+            {(activeView === 'server_status' || (currentRole === 'admin' && activeView === 'metrics')) && (
+              <ServerStatusView language={language} />
+            )}
+
+            {currentRole === 'admin' && activeView === 'access_logs' && (
+              <AccountLogsView language={language} />
+            )}
+
+            {currentRole === 'admin' && activeView === 'audit' && (
+              <AuditLogView language={language} />
+            )}
+
+            {activeView === 'runtimes' && (
+              <RuntimesManagerView language={language} onOpenTerminal={() => setIsTerminalOpen(true)} />
+            )}
+
             {activeView === 'apps' && (
               <SoftInstallerView language={language} />
             )}
 
-            {/* Billing Engine (Section 7) */}
-            {activeView === 'billing' && (
+            {(activeView === 'billing') && (
               <BillingLedgerView language={language} />
             )}
 
-            {/* User / Client Panel Dashboard (Image 1) */}
             {currentRole === 'user' && activeView === 'home' && (
-              <UserDashboard 
+              <UserDashboard
                 language={language}
+                account={activeViewAccount}
                 onOpenDnsEditor={() => setIsDnsEditorOpen(true)}
                 onOpenFileBrowser={() => setIsFileManagerOpen(true)}
-                onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
+                onOpenMailManager={() => setIsMailManagerOpen(true)}
+                onOpenSslManager={() => setIsSslManagerOpen(true)}
                 onOpenTerminal={() => setIsTerminalOpen(true)}
-                selectedCategory={selectedUserCategory}
+                onOpenApps={() => setActiveView('apps')}
+                onOpenLogs={() => setActiveView('access_logs')}
+                onOpenRuntimes={() => setActiveView('runtimes')}
+                onOpenBilling={() => setActiveView('billing')}
               />
             )}
 
-            {/* Tools Directory View (Image 4) */}
             {activeView === 'tools' && (
-              <ToolsDirectoryView 
+              <ToolsDirectoryView
                 language={language}
                 onOpenDns={() => setIsDnsEditorOpen(true)}
                 onOpenFiles={() => setIsFileManagerOpen(true)}
@@ -431,50 +467,44 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* Metrics Fallback */}
-            {activeView === 'metrics' && (
-              <AdminDashboard 
-                accounts={accounts}
-                systemMetrics={systemMetrics}
-                language={language}
-                onOpenNewAccount={() => setIsNewAccountOpen(true)}
-                onOpenDnsEditor={() => setIsDnsEditorOpen(true)}
-                onSwitchToUser={handleSwitchToUser}
-                onToggleSuspend={handleToggleSuspend}
-                onViewCluster={() => setActiveView('cluster')}
-              />
+            {activeView === 'whatsapp' && (
+              <div className="glass-panel" style={{ padding: '24px' }}>
+                <button type="button" className="btn btn-primary" onClick={() => setIsWhatsAppOpen(true)}>
+                  {t('connect')}
+                </button>
+              </div>
             )}
           </div>
         </main>
       </div>
 
-      {/* Modals */}
-      <DnsZoneEditorModal 
+      <DnsZoneEditorModal
         isOpen={isDnsEditorOpen}
         onClose={() => setIsDnsEditorOpen(false)}
         language={language}
       />
 
-      <NewAccountModal 
+      <NewAccountModal
         isOpen={isNewAccountOpen}
         onClose={() => setIsNewAccountOpen(false)}
         onAccountCreated={handleAccountCreated}
         language={language}
       />
 
-      <FileManagerModal 
+      <FileManagerModal
         isOpen={isFileManagerOpen}
         onClose={() => setIsFileManagerOpen(false)}
         language={language}
+        account={activeAccount}
       />
 
-      <WhatsAppModal 
+      <WhatsAppModal
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}
         language={language}
       />
 
-      <TerminalModal 
+      <TerminalModal
         isOpen={isTerminalOpen}
         onClose={() => setIsTerminalOpen(false)}
         language={language}

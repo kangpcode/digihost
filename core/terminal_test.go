@@ -33,7 +33,7 @@ func TestTerminalProhibitsShellInterpreters(t *testing.T) {
 	for _, cmd := range forbiddenCommands {
 		body, _ := json.Marshal(map[string]string{"command": cmd})
 		req, _ := http.NewRequest("POST", "/api/v1/terminal/exec", bytes.NewReader(body))
-		req.Header.Set("Authorization", "Bearer "+TestAuthToken)
+		req.Header.Set("Authorization", "Bearer "+adminToken(t, handler))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
@@ -62,7 +62,7 @@ func TestTerminalExecutesSafeWhitelistedBinary(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"command": "whoami"})
 	req, _ := http.NewRequest("POST", "/api/v1/terminal/exec", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+TestAuthToken)
+	req.Header.Set("Authorization", "Bearer "+adminToken(t, handler))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)

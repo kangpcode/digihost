@@ -29,7 +29,12 @@ paths:
 
   /auth/login:
     post:
-      summary: Authenticate user credentials and issue scoped JWT
+      summary: Exchange credentials for an opaque session token
+      description: >-
+        The token is a 256-bit random value bound to a session record that holds
+        the user, the role, and an expiry. The role is never read from the token.
+        Failed attempts are throttled per username and validated client address,
+        and every attempt is written to the audit trail.
       requestBody:
         required: true
         content:
@@ -46,20 +51,176 @@ paths:
                   type: string
       responses:
         '200':
-          description: Session token and user persona profile
+          description: Session token, username, role, and remaining lifetime in seconds
         '401':
           description: Invalid credentials or invalid 2FA token
+        '429':
+          description: Too many failed attempts for this username and address
 
-  /auth/me:
-    get:
-      summary: Get currently authenticated user profile
+  /auth/logout:
+    post:
+      summary: Revoke the current session token
       security:
         - BearerAuth: []
       responses:
         '200':
-          description: Profile information
+          description: Session revoked; the token no longer authenticates
+
+  /auth/me:
+    get:
+      summary: Get the authenticated user profile resolved from the live session
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Username, role, permissions, two-factor state, expiry, and active session count
         '401':
-          description: Unauthorized
+          description: Missing, expired, or revoked session
+
+  /users:
+    get:
+      summary: List panel identities
+      description: 'Optional filter: ?role=admin|reseller|user|staff. Requires users.read.'
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Panel identities with role and granted permissions
+        '403':
+          description: Permission denied
+    post:
+      summary: Create a panel identity with an Argon2id hashed password
+      description: Requires users.write. Role must be a known RBAC role.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, role]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, reseller, user, staff]
+      responses:
+        '201':
+          description: Identity created
+        '400':
+          description: Invalid role or password policy violation
+        '409':
+          description: Identity already exists
+    put:
+      summary: Rotate a panel password and revoke its sessions
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Password changed and every live session revoked
+        '404':
+          description: Identity not found
+    delete:
+      summary: Delete a panel identity
+      description: 'Query parameter: ?username=. The built-in administrator cannot be deleted.'
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Identity removed and its sessions revoked
+        '404':
+          description: Identity not found
+
+  /hosting/packages:
+    get:
+      summary: List hosting plans enforced by the hosting engine
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of plan definitions
+    post:
+      summary: Create a hosting plan
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Plan created and immediately usable by account provisioning
+        '400':
+          description: Invalid plan definition
+        '409':
+          description: Plan already exists
+    put:
+      summary: Replace the limits of an existing plan
+      description: 'Query parameter: ?name=.'
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Plan updated
+        '404':
+          description: Plan not found
+    delete:
+      summary: Delete an unused plan
+      description: 'Query parameter: ?name=. A plan assigned to any account is refused.'
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Plan deleted
+        '409':
+          description: Plan is in use by at least one account
+
+  /hosting/accounts/package:
+    post:
+      summary: Move an account to another plan and re-apply plan limits
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, package]
+              properties:
+                username:
+                  type: string
+                package:
+                  type: string
+      responses:
+        '200':
+          description: Updated account record
+        '404':
+          description: Account or plan not found
+
+  /hosting/accounts/usage:
+    get:
+      summary: Recompute measured disk, inode, and bandwidth usage for one account
+      description: 'Query parameter: ?username=. A client role may only request its own account.'
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account record with refreshed usage
+        '403':
+          description: Account is outside the caller's scope
 
   /system/telemetry:
     get:
@@ -91,17 +252,18 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [domain, username, password, plan]
+              type: object                required: [domain, username, package]
               properties:
+                tenantId:
+                  type: string
+                  description: Defaults to tenant-default when omitted
                 domain:
                   type: string
                 username:
                   type: string
-                password:
+                package:
                   type: string
-                plan:
-                  type: string
+                  description: Must name an existing plan; unknown plans are rejected
                 phpVersion:
                   type: string
       responses:
@@ -349,4 +511,7 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: opaque-session-token
+      description: >-
+        Opaque token returned by /auth/login. It carries no claims; the server
+        resolves it against the session store on every request.

@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,8 +37,8 @@ import (
 )
 
 const (
-	DefaultPort   = "8080"
-	TestAuthToken = "digipanel-secure-session-token-v1"
+	DefaultPort  = "8080"
+	PanelVersion = "1.0.0"
 )
 
 type UserAccount struct {
@@ -137,6 +139,10 @@ type ServerState struct {
 	DnsRecords      []DnsRecord
 	LedgerItems     []LedgerEntry
 	ClusterNodes    []ClusterNode
+	Invoices        *InvoiceStore
+	Sessions        *SessionStore
+	LoginThrottle   *LoginThrottle
+	TrustedProxies  []string
 }
 
 var safeTerminalBinaries = map[string]bool{
@@ -172,12 +178,30 @@ var routeRequiredPermissions = map[string]string{
 	"POST /api/v1/runtimes/apps/action":       "runtimes.manage",
 	"DELETE /api/v1/runtimes/apps":            "runtimes.manage",
 	"GET /api/v1/cluster/fleet":               "system.fleet.read",
+	"GET /api/v1/system/telemetry":            "system.telemetry.view",
+	"GET /api/v1/system/services":             "system.telemetry.view",
 	"GET /api/v1/users":                       "users.read",
+	"POST /api/v1/users":                      "users.write",
+	"PUT /api/v1/users":                       "users.write",
+	"DELETE /api/v1/users":                    "users.write",
 	"GET /api/v1/hosting/packages":            "accounts.read",
+	"POST /api/v1/hosting/packages":           "accounts.modify_package",
+	"PUT /api/v1/hosting/packages":            "accounts.modify_package",
+	"DELETE /api/v1/hosting/packages":         "accounts.modify_package",
+	"GET /api/v1/hosting/accounts":            "accounts.read",
+	"GET /api/v1/hosting/accounts/detail":     "accounts.read",
+	"GET /api/v1/hosting/accounts/logs":       "accounts.read",
+	"GET /api/v1/files/list":                  "files.read",
+	"GET /api/v1/files/content":               "files.read",
+	"GET /api/v1/billing/invoices":            "billing.invoices.read",
+	"POST /api/v1/billing/invoices":           "billing.invoices.write",
+	"POST /api/v1/billing/invoices/pay":       "billing.invoices.write",
 	"POST /api/v1/hosting/accounts":           "accounts.create",
 	"POST /api/v1/hosting/accounts/suspend":   "accounts.suspend",
 	"POST /api/v1/hosting/accounts/unsuspend": "accounts.suspend",
 	"POST /api/v1/hosting/accounts/terminate": "accounts.terminate",
+	"POST /api/v1/hosting/accounts/package":   "accounts.modify_package",
+	"GET /api/v1/hosting/accounts/usage":      "accounts.read",
 	"GET /api/v1/dns/zones":                   "dns.read",
 	"POST /api/v1/dns/zones":                  "dns.write",
 	"GET /api/v1/dns/records":                 "dns.read",
@@ -198,7 +222,6 @@ var routeRequiredPermissions = map[string]string{
 	"POST /api/v1/mail/deliver":               "mail.write",
 	"POST /api/v1/mail/cleanliness":           "mail.antispam",
 	"GET /api/v1/billing/ledger":              "billing.ledger.read",
-	"GET /api/v1/billing/invoices":            "billing.invoices.read",
 	"GET /api/v1/audit/logs":                  "audit.logs.read",
 	"GET /api/v1/system/modules":              "system.modules.manage",
 	"GET /api/v1/apps/catalog":                "apps.read",
@@ -214,8 +237,7 @@ var routeRequiredPermissions = map[string]string{
 func initStorage(state *ServerState) {
 	dirs := []string{
 		filepath.Join(state.StorageDir, "apps"),
-		filepath.Join(state.StorageDir, "vhosts", "testuser", "public_html"),
-		filepath.Join(state.StorageDir, "vhosts", "testuser", "logs"),
+		filepath.Join(state.StorageDir, "vhosts"),
 		filepath.Join(state.StorageDir, "dns"),
 		filepath.Join(state.StorageDir, "billing"),
 		filepath.Join(state.StorageDir, "runtimes"),
@@ -225,53 +247,21 @@ func initStorage(state *ServerState) {
 		_ = os.MkdirAll(d, 0755)
 	}
 
-	testIndex := filepath.Join(state.StorageDir, "vhosts", "testuser", "public_html", "index.html")
-	if _, err := os.Stat(testIndex); os.IsNotExist(err) {
-		_ = os.WriteFile(testIndex, []byte(`<!DOCTYPE html>
-<html>
-<head><title>Welcome to DigiPanel Vhost</title></head>
-<body><h1>DigiPanel Live Vhost</h1><p>Running natively on Linux.</p></body>
-</html>`), 0644)
+	// One administrator is provisioned from DIGIPANEL_ADMIN_PASSWORD or, when
+	// the variable is absent, from a generated credential file. No password is
+	// compiled into the binary.
+	state.Users = make(map[string]*UserAccount)
+	if err := bootstrapAdministrator(state); err != nil {
+		fmt.Fprintf(os.Stderr, "DigiPanel: administrator bootstrap failed: %v\n", err)
 	}
-
-	testPhp := filepath.Join(state.StorageDir, "vhosts", "testuser", "public_html", "index.php")
-	if _, err := os.Stat(testPhp); os.IsNotExist(err) {
-		_ = os.WriteFile(testPhp, []byte(`<?php
-echo "DigiPanel Native PHP Engine: " . phpversion();
-`), 0644)
+	if state.Sessions == nil {
+		state.Sessions = NewSessionStore()
 	}
-
-	// Initialize users with Argon2id hashes
-	adminHash, _ := auth.HashPassword("admin123")
-	resellerHash, _ := auth.HashPassword("reseller123")
-	userHash, _ := auth.HashPassword("user123")
-	staffHash, _ := auth.HashPassword("staff123")
-
-	state.Users = map[string]*UserAccount{
-		"admin": {
-			Username:         "admin",
-			PasswordHash:     adminHash,
-			Role:             rbac.RoleAdmin,
-			TwoFactorEnabled: false,
-		},
-		"reseller": {
-			Username:         "reseller",
-			PasswordHash:     resellerHash,
-			Role:             rbac.RoleReseller,
-			TwoFactorEnabled: false,
-		},
-		"testuser": {
-			Username:         "testuser",
-			PasswordHash:     userHash,
-			Role:             rbac.RoleUser,
-			TwoFactorEnabled: false,
-		},
-		"staff": {
-			Username:         "staff",
-			PasswordHash:     staffHash,
-			Role:             rbac.RoleStaff,
-			TwoFactorEnabled: false,
-		},
+	if state.LoginThrottle == nil {
+		state.LoginThrottle = NewLoginThrottle()
+	}
+	if len(state.TrustedProxies) == 0 {
+		state.TrustedProxies = parseTrustedProxies(os.Getenv("DIGIPANEL_TRUSTED_PROXIES"))
 	}
 
 	state.AuditLogger = audit.NewLogger()
@@ -279,79 +269,36 @@ echo "DigiPanel Native PHP Engine: " . phpversion();
 	state.HostingManager = hosting.NewManager(state.StorageDir)
 	state.DNSManager = dns.NewManager()
 	state.SSLManager = ssl.NewManager(filepath.Join(state.StorageDir, "ssl"))
-	state.MailManager = mail.NewManager("103.189.201.42")
+	state.MailManager = mail.NewManager(hosting.PrimaryIPv4())
 	state.RuntimesManager = runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
 	state.PHPManager = php.NewManager(filepath.Join(state.StorageDir, "php"))
 	state.SoftInstaller = newSoftInstallerManager(state)
 
-	// Seed testuser account in hosting manager
-	_, _ = state.HostingManager.CreateAccount(hosting.CreateAccountRequest{
-		TenantID:   "tenant-default",
-		Username:   "testuser",
-		Domain:     "testuser.digipanel.live",
-		Package:    "starter",
-		PhpVersion: "8.3",
-	})
-
-	// Seed DNS, SSL, and Mail for testuser
-	_, _ = state.DNSManager.CreateZone("testuser.digipanel.live", "tenant-default", "ns1.digipanel.id.", "admin@digipanel.live", "103.189.201.42")
-	_, _ = state.SSLManager.IssueCertificate(ssl.IssueRequest{
-		Domain:    "testuser.digipanel.live",
-		SANs:      []string{"www.testuser.digipanel.live"},
-		Provider:  ssl.ProviderLetsEncrypt,
-		Challenge: ssl.ChallengeHTTP01,
-		AutoRenew: true,
-	})
-	_, _ = state.MailManager.AddDomain("testuser.digipanel.live", "tenant-default")
-	_, _ = state.MailManager.CreateMailbox("admin@testuser.digipanel.live", "SecureAdminP@ss123", 1024)
-
-	// Register default queue handlers
-	state.TaskQueue.RegisterHandler("account.provision", func(ctx context.Context, t *queue.Task) error {
-		return nil
-	})
+	// Queue handlers perform the real operation for each task type. An unknown
+	// type fails the job instead of reporting a hollow success.
 	state.TaskQueue.RegisterHandler("ssl.renew", func(ctx context.Context, t *queue.Task) error {
+		var payload struct {
+			Domain string `json:"domain"`
+		}
+		if err := json.Unmarshal([]byte(t.Payload), &payload); err != nil {
+			return fmt.Errorf("ssl.renew payload: %w", err)
+		}
+		if strings.TrimSpace(payload.Domain) == "" {
+			return errors.New("ssl.renew requires a domain")
+		}
+		_, err := state.SSLManager.RenewCertificate(payload.Domain, true)
+		return err
+	})
+	state.TaskQueue.RegisterHandler("ssl.autossl", func(ctx context.Context, t *queue.Task) error {
+		state.SSLManager.RunAutoSSLEvaluation()
 		return nil
 	})
-	state.TaskQueue.RegisterHandler("dns.sync", func(ctx context.Context, t *queue.Task) error {
-		return nil
-	})
 
-	state.ClusterNodes = []ClusterNode{
-		{
-			ID:           "node-primary",
-			Name:         "sg-hub-01",
-			Hostname:     "panel.digihost.id",
-			IPAddress:    "103.189.201.42",
-			Role:         "hub",
-			Status:       "online",
-			PanelVersion: "1.0.0",
-		},
-		{
-			ID:           "node-edge-1",
-			Name:         "id-edge-01",
-			Hostname:     "jkt01.digihost.id",
-			IPAddress:    "103.189.201.43",
-			Role:         "edge",
-			Status:       "online",
-			PanelVersion: "1.0.0",
-		},
-	}
-
-	state.DnsRecords = []DnsRecord{
-		{ID: "rec-1", Domain: "digipanel.live", Type: "A", Name: "@", Content: "103.189.201.42", TTL: 300},
-		{ID: "rec-2", Domain: "digipanel.live", Type: "A", Name: "panel", Content: "103.189.201.42", TTL: 300},
-		{ID: "rec-3", Domain: "digipanel.live", Type: "CNAME", Name: "www", Content: "digipanel.live", TTL: 3600},
-		{ID: "rec-4", Domain: "digipanel.live", Type: "MX", Name: "@", Content: "mail.digipanel.live", TTL: 3600, Priority: 10},
-		{ID: "rec-5", Domain: "digipanel.live", Type: "TXT", Name: "@", Content: "v=spf1 a mx ip4:103.189.201.42 ~all", TTL: 3600},
-		{ID: "rec-6", Domain: "digipanel.live", Type: "TXT", Name: "_dmarc", Content: "v=DMARC1; p=quarantine; rua=mailto:dmarc@digipanel.live", TTL: 3600},
-	}
-
-	state.LedgerItems = []LedgerEntry{
-		{ID: 1, TxRef: "TX-1001", AccountCode: "1010-CASH-GATEWAY-MIDTRANS", AmountCents: 15000000, Direction: "debit", Currency: "IDR"},
-		{ID: 2, TxRef: "TX-1001", AccountCode: "4010-REVENUE-HOSTING-PLANS", AmountCents: 15000000, Direction: "credit", Currency: "IDR"},
-		{ID: 3, TxRef: "TX-1002", AccountCode: "1030-CASH-GATEWAY-STRIPE", AmountCents: 25000000, Direction: "debit", Currency: "IDR"},
-		{ID: 4, TxRef: "TX-1002", AccountCode: "4020-REVENUE-DOMAINS", AmountCents: 25000000, Direction: "credit", Currency: "IDR"},
-	}
+	// This build serves a single node. The fleet inventory is built from the
+	// real host identity at request time; no remote node is invented.
+	state.ClusterNodes = nil
+	state.DnsRecords = nil
+	state.LedgerItems = nil
 }
 
 // resolveUnixUserForDomain finds the hosting account that owns the domain and
@@ -372,8 +319,6 @@ func getRealTelemetry() SystemTelemetry {
 
 	if h, err := os.Hostname(); err == nil {
 		t.Hostname = h
-	} else {
-		t.Hostname = "panel.digihost.id"
 	}
 
 	if ver, err := os.ReadFile("/proc/version"); err == nil {
@@ -393,9 +338,6 @@ func getRealTelemetry() SystemTelemetry {
 				break
 			}
 		}
-	}
-	if t.OS == "" {
-		t.OS = "Ubuntu 26.04.1 LTS"
 	}
 
 	if upBytes, err := os.ReadFile("/proc/uptime"); err == nil {
@@ -421,7 +363,7 @@ func getRealTelemetry() SystemTelemetry {
 		}
 	}
 	if len(t.LoadAverage) == 0 {
-		t.LoadAverage = []float64{0.12, 0.08, 0.05}
+		t.LoadAverage = []float64{0, 0, 0}
 	}
 
 	if memBytes, err := os.ReadFile("/proc/meminfo"); err == nil {
@@ -464,22 +406,15 @@ func getRealTelemetry() SystemTelemetry {
 		t.DiskFreeGb = float64(freeBytes) / (1024 * 1024 * 1024)
 	}
 
-	t.CPUUsagePercent = 4.2
-	if t.LoadAverage[0] > 0 {
-		cpuEst := (t.LoadAverage[0] / float64(runtime.NumCPU())) * 100.0
-		if cpuEst > 100.0 {
-			cpuEst = 100.0
-		}
-		t.CPUUsagePercent = float64(int(cpuEst*10)) / 10.0
-	}
+	t.CPUUsagePercent = cpuUsagePercent()
+	t.ActiveProcesses = processCount()
+	t.PublicIP = hosting.PrimaryIPv4()
 
-	t.ActiveProcesses = runtime.NumGoroutine()*8 + 120
-	t.PublicIP = "103.189.201.42"
-
-	t.RuntimesDetected.NodeVersion = "v26.8.1"
-	t.RuntimesDetected.PythonVersion = "Python 3.14.7"
-	t.RuntimesDetected.GoVersion = "go1.27.0"
-	t.RuntimesDetected.PHPVersion = "PHP 8.3.32 (with Zend OPcache)"
+	runtimes := detectedRuntimes()
+	t.RuntimesDetected.NodeVersion = runtimes["nodeVersion"]
+	t.RuntimesDetected.PythonVersion = runtimes["pythonVersion"]
+	t.RuntimesDetected.GoVersion = runtimes["goVersion"]
+	t.RuntimesDetected.PHPVersion = runtimes["phpVersion"]
 
 	return t
 }
@@ -490,23 +425,69 @@ func enableCors(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
-func resolveRoleFromToken(token string) (rbac.Role, bool) {
-	switch {
-	case token == TestAuthToken || token == "token-role-admin":
-		return rbac.RoleAdmin, true
-	case token == "token-role-reseller":
-		return rbac.RoleReseller, true
-	case token == "token-role-user":
-		return rbac.RoleUser, true
-	case token == "token-role-staff":
-		return rbac.RoleStaff, true
-	default:
-		return "", false
+// bearerToken extracts the opaque session token from the Authorization header.
+func bearerToken(r *http.Request) string {
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if header == "" {
+		return ""
 	}
+	if len(header) > 7 && strings.EqualFold(header[:7], "Bearer ") {
+		return strings.TrimSpace(header[7:])
+	}
+	return ""
+}
+
+// parseTrustedProxies reads a comma separated list of proxy addresses or CIDR
+// blocks. Identity headers are only honoured when the direct peer matches.
+func parseTrustedProxies(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		clean := strings.TrimSpace(part)
+		if clean != "" {
+			out = append(out, clean)
+		}
+	}
+	return out
+}
+
+// clientIP returns the validated remote address. Forwarded identity headers are
+// trusted only from a registered proxy, so a client cannot spoof its address to
+// escape throttling or to forge audit records.
+func clientIP(r *http.Request, trustedProxies []string) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	peer := r.RemoteAddr
+	if err == nil {
+		peer = host
+	}
+	if !isTrustedProxy(peer, trustedProxies) {
+		return peer
+	}
+	forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0])
+	if forwarded != "" {
+		return forwarded
+	}
+	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+		return real
+	}
+	return peer
+}
+
+func isTrustedProxy(address string, trustedProxies []string) bool {
+	parsed := net.ParseIP(address)
+	for _, entry := range trustedProxies {
+		if entry == address {
+			return true
+		}
+		if _, block, err := net.ParseCIDR(entry); err == nil && parsed != nil && block.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 // Router Default-Deny & RBAC Middleware
-func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool) http.Handler {
+func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool, state *ServerState) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		enableCors(w)
 		if r.Method == "OPTIONS" {
@@ -520,8 +501,8 @@ func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool)
 			return
 		}
 
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
+		token := bearerToken(r)
+		if token == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]string{
@@ -530,9 +511,8 @@ func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool)
 			return
 		}
 
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		role, valid := resolveRoleFromToken(token)
-		if !valid {
+		session, sessionErr := state.Sessions.Resolve(token)
+		if sessionErr != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]string{
@@ -543,7 +523,7 @@ func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool)
 
 		// Enforce fine-grained RBAC
 		if requiredPerm, exists := routeRequiredPermissions[routeKey]; exists {
-			if err := rbac.ValidateAccess(role, requiredPerm); err != nil {
+			if err := rbac.ValidateAccess(session.Role, requiredPerm); err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
 				_ = json.NewEncoder(w).Encode(map[string]string{
@@ -558,6 +538,7 @@ func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool)
 }
 
 func NewServerHandler(state *ServerState) http.Handler {
+	state.ensureRuntime()
 	mux := http.NewServeMux()
 
 	// 1. Health check (Public)
@@ -565,7 +546,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "ok",
-			"version": "1.0.0",
+			"version": PanelVersion,
 		})
 	})
 
@@ -590,98 +571,430 @@ func NewServerHandler(state *ServerState) http.Handler {
 		user, exists := state.Users[req.Username]
 		state.mu.RUnlock()
 
+		clientAddress := clientIP(r, state.TrustedProxies)
+		throttleKey := strings.ToLower(strings.TrimSpace(req.Username)) + "|" + clientAddress
+		allowed, wait := state.LoginThrottle.Check(throttleKey)
+		if !allowed {
+			state.AuditLogger.Append(req.Username, "auth.login_throttled", "user", req.Username, `{"reason":"rate_limited"}`, clientAddress)
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(wait.Seconds())+1))
+			writeAPIError(w, "Too many failed attempts. Try again later.", http.StatusTooManyRequests)
+			return
+		}
+
 		if !exists {
-			state.AuditLogger.Append("anonymous", "auth.login_failed", "user", req.Username, `{"reason":"user_not_found"}`, r.RemoteAddr)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
+			state.LoginThrottle.Failure(throttleKey)
+			state.AuditLogger.Append("anonymous", "auth.login_failed", "user", req.Username, `{"reason":"user_not_found"}`, clientAddress)
+			writeAPIError(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
 		// Verify Argon2id password hash
 		match, err := auth.VerifyPassword(req.Password, user.PasswordHash)
 		if err != nil || !match {
-			state.AuditLogger.Append(req.Username, "auth.login_failed", "user", req.Username, `{"reason":"invalid_password"}`, r.RemoteAddr)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
+			state.LoginThrottle.Failure(throttleKey)
+			state.AuditLogger.Append(req.Username, "auth.login_failed", "user", req.Username, `{"reason":"invalid_password"}`, clientAddress)
+			writeAPIError(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
 		// Verify 2FA TOTP if enabled
 		if user.TwoFactorEnabled {
 			if req.TotpCode == "" || !auth.VerifyTOTP(user.TotpSecret, req.TotpCode, time.Now()) {
-				state.AuditLogger.Append(req.Username, "auth.login_failed_2fa", "user", req.Username, `{"reason":"invalid_totp"}`, r.RemoteAddr)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or missing 2FA code"})
+				state.LoginThrottle.Failure(throttleKey)
+				state.AuditLogger.Append(req.Username, "auth.login_failed_2fa", "user", req.Username, `{"reason":"invalid_totp"}`, clientAddress)
+				writeAPIError(w, "Invalid or missing 2FA code", http.StatusUnauthorized)
 				return
 			}
 		}
 
-		token := fmt.Sprintf("token-role-%s", user.Role)
-		state.AuditLogger.Append(req.Username, "auth.login_success", "user", req.Username, `{"status":"ok"}`, r.RemoteAddr)
+		session, err := state.Sessions.Create(user.Username, user.Role, clientAddress)
+		if err != nil {
+			writeAPIError(w, "Unable to create a session", http.StatusInternalServerError)
+			return
+		}
+		state.LoginThrottle.Success(throttleKey)
+		state.AuditLogger.Append(req.Username, "auth.login_success", "user", req.Username, `{"status":"ok"}`, clientAddress)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"token":     token,
+			"token":     session.Token,
 			"username":  user.Username,
 			"role":      string(user.Role),
-			"expiresIn": 86400,
+			"expiresIn": int(time.Until(session.ExpiresAt).Seconds()),
 		})
+	})
+
+	// 3. Session termination (Protected)
+	mux.HandleFunc("/api/v1/auth/logout", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		token := bearerToken(r)
+		if session, err := state.Sessions.Resolve(token); err == nil {
+			state.AuditLogger.Append(session.Username, "auth.logout", "user", session.Username, `{}`, clientIP(r, state.TrustedProxies))
+		}
+		state.Sessions.Revoke(token)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"signedOut": true})
 	})
 
 	mux.HandleFunc("/api/v1/hosting/packages", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		if sessionErr != nil {
+			writeAPIError(w, "Session expired", http.StatusUnauthorized)
+			return
+		}
+		clientAddress := clientIP(r, state.TrustedProxies)
+
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(state.HostingManager.ListPackages())
+
+		case http.MethodPost:
+			var req hosting.AccountPackage
+			if err := decodeJSONBody(w, r, &req); err != nil {
+				writeAPIError(w, "Invalid package payload: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			created, err := state.HostingManager.CreatePackage(req)
+			if err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, hosting.ErrPackageExists) {
+					status = http.StatusConflict
+				}
+				writeAPIError(w, err.Error(), status)
+				return
+			}
+			state.AuditLogger.Append(session.Username, "hosting.package.create", "package", created.Name,
+				fmt.Sprintf(`{"diskLimitBytes":%d,"bandwidthLimitBytes":%d}`, created.DiskLimitBytes, created.BandwidthLimitBytes), clientAddress)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(created)
+
+		case http.MethodPut:
+			name := strings.TrimSpace(r.URL.Query().Get("name"))
+			if name == "" {
+				writeAPIError(w, "name query parameter is required", http.StatusBadRequest)
+				return
+			}
+			var req hosting.AccountPackage
+			if err := decodeJSONBody(w, r, &req); err != nil {
+				writeAPIError(w, "Invalid package payload: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			updated, err := state.HostingManager.UpdatePackage(name, req)
+			if err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, hosting.ErrPackageNotFound) {
+					status = http.StatusNotFound
+				}
+				writeAPIError(w, err.Error(), status)
+				return
+			}
+			state.AuditLogger.Append(session.Username, "hosting.package.update", "package", updated.Name, `{}`, clientAddress)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(updated)
+
+		case http.MethodDelete:
+			name := strings.TrimSpace(r.URL.Query().Get("name"))
+			if name == "" {
+				writeAPIError(w, "name query parameter is required", http.StatusBadRequest)
+				return
+			}
+			if err := state.HostingManager.DeletePackage(name); err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, hosting.ErrPackageNotFound) {
+					status = http.StatusNotFound
+				}
+				if errors.Is(err, hosting.ErrPackageInUse) {
+					status = http.StatusConflict
+				}
+				writeAPIError(w, err.Error(), status)
+				return
+			}
+			state.AuditLogger.Append(session.Username, "hosting.package.delete", "package", name, `{}`, clientAddress)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+
+		default:
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Single hosting account record used by the account detail and client views.
+	mux.HandleFunc("/api/v1/hosting/accounts/detail", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		username := strings.TrimSpace(r.URL.Query().Get("username"))
+		if username == "" {
+			writeAPIError(w, "username is required", http.StatusBadRequest)
+			return
+		}
+		if err := state.authorizeAccountScope(r, username); err != nil {
+			writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+			return
+		}
+		account, err := state.HostingManager.RefreshUsage(username)
+		if err != nil {
+			writeAPIError(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(state.HostingManager.ListPackages())
+		_ = json.NewEncoder(w).Encode(account)
 	})
+
+	// Account web server logs. Only the closed set access.log and error.log is
+	// readable, and only inside the owning account tree.
+	mux.HandleFunc("/api/v1/hosting/accounts/logs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		username := strings.TrimSpace(r.URL.Query().Get("username"))
+		if username == "" {
+			writeAPIError(w, "username is required", http.StatusBadRequest)
+			return
+		}
+		if err := state.authorizeAccountScope(r, username); err != nil {
+			writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+			return
+		}
+		logType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+		if logType == "" {
+			logType = "access"
+		}
+		lines := 200
+		if raw := r.URL.Query().Get("lines"); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed <= 0 {
+				writeAPIError(w, "lines must be a positive integer", http.StatusBadRequest)
+				return
+			}
+			if parsed > 2000 {
+				parsed = 2000
+			}
+			lines = parsed
+		}
+		entries, exists, err := state.HostingManager.ReadAccountLog(username, logType+".log", lines)
+		if err != nil {
+			status := http.StatusNotFound
+			if strings.Contains(err.Error(), "unsupported log") || errors.Is(err, hosting.ErrAccountNotFound) {
+				status = http.StatusBadRequest
+			}
+			writeAPIError(w, err.Error(), status)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"username": username,
+			"log":      logType,
+			"exists":   exists,
+			"lines":    entries,
+		})
+	})
+
+	// Live systemd state for the managed hosting services.
+	mux.HandleFunc("/api/v1/system/services", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		services, err := probeServices()
+		if err != nil {
+			writeAPIError(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"services":  services,
+			"probedAt":  time.Now().UTC(),
+			"managedBy": "systemd",
+		})
+	})
+
+	// File manager browsing scoped to the owning hosting account.
+	mux.HandleFunc("/api/v1/files/list", state.handleFileList)
+	mux.HandleFunc("/api/v1/files/content", state.handleFileContent)
+
+	// Native invoice ledger.
+	mux.HandleFunc("/api/v1/billing/invoices", state.handleInvoices)
+	mux.HandleFunc("/api/v1/billing/invoices/pay", state.handleInvoicePayment)
 
 	// Panel identities. Secrets and password hashes never leave the process.
 	mux.HandleFunc("/api/v1/users", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		if sessionErr != nil {
+			writeAPIError(w, "Session expired", http.StatusUnauthorized)
 			return
 		}
-		roleFilter := r.URL.Query().Get("role")
-		state.mu.RLock()
-		accounts := make([]map[string]any, 0, len(state.Users))
-		for _, user := range state.Users {
-			if roleFilter != "" && string(user.Role) != roleFilter {
-				continue
+		actor := session.Username
+		clientAddress := clientIP(r, state.TrustedProxies)
+
+		switch r.Method {
+		case http.MethodGet:
+			roleFilter := r.URL.Query().Get("role")
+			if roleFilter != "" {
+				switch rbac.Role(roleFilter) {
+				case rbac.RoleAdmin, rbac.RoleReseller, rbac.RoleUser, rbac.RoleStaff:
+				default:
+					writeAPIError(w, "Unknown role filter", http.StatusBadRequest)
+					return
+				}
 			}
-			accounts = append(accounts, map[string]any{
-				"username":         user.Username,
-				"role":             user.Role,
-				"twoFactorEnabled": user.TwoFactorEnabled,
+			state.mu.RLock()
+			accounts := make([]map[string]any, 0, len(state.Users))
+			for _, user := range state.Users {
+				if roleFilter != "" && string(user.Role) != roleFilter {
+					continue
+				}
+				accounts = append(accounts, map[string]any{
+					"username":         user.Username,
+					"role":             user.Role,
+					"twoFactorEnabled": user.TwoFactorEnabled,
+					"permissions":      rbac.GetRolePermissions(user.Role),
+				})
+			}
+			state.mu.RUnlock()
+			sort.Slice(accounts, func(i, j int) bool {
+				return fmt.Sprint(accounts[i]["username"]) < fmt.Sprint(accounts[j]["username"])
 			})
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(accounts)
+
+		case http.MethodPost:
+			var req struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+				Role     string `json:"role"`
+			}
+			if err := decodeJSONBody(w, r, &req); err != nil {
+				writeAPIError(w, "Invalid user payload: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := state.createUser(req.Username, req.Password, rbac.Role(req.Role), ""); err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, ErrUserExists) {
+					status = http.StatusConflict
+				}
+				writeAPIError(w, err.Error(), status)
+				return
+			}
+			state.AuditLogger.Append(actor, "users.create", "user", req.Username,
+				fmt.Sprintf(`{"role":%q}`, req.Role), clientAddress)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{"username": strings.ToLower(req.Username), "role": req.Role})
+
+		case http.MethodPut:
+			var req struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+			}
+			if err := decodeJSONBody(w, r, &req); err != nil {
+				writeAPIError(w, "Invalid password payload: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := validatePassword(req.Password); err != nil {
+				writeAPIError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			state.mu.Lock()
+			user, exists := state.Users[req.Username]
+			if !exists {
+				state.mu.Unlock()
+				writeAPIError(w, ErrUserNotFound.Error(), http.StatusNotFound)
+				return
+			}
+			hash, hashErr := auth.HashPassword(req.Password)
+			if hashErr != nil {
+				state.mu.Unlock()
+				writeAPIError(w, "Unable to hash password", http.StatusInternalServerError)
+				return
+			}
+			user.PasswordHash = hash
+			state.mu.Unlock()
+			revoked := state.Sessions.RevokeUser(req.Username)
+			state.AuditLogger.Append(actor, "users.password_change", "user", req.Username,
+				fmt.Sprintf(`{"sessionsRevoked":%d}`, revoked), clientAddress)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"updated": true, "sessionsRevoked": revoked})
+
+		case http.MethodDelete:
+			username := strings.TrimSpace(r.URL.Query().Get("username"))
+			if username == "" {
+				writeAPIError(w, "username is required", http.StatusBadRequest)
+				return
+			}
+			if err := state.deleteUser(username); err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, ErrUserNotFound) {
+					status = http.StatusNotFound
+				}
+				writeAPIError(w, err.Error(), status)
+				return
+			}
+			state.AuditLogger.Append(actor, "users.delete", "user", username, `{}`, clientAddress)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+
+		default:
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-		state.mu.RUnlock()
-		sort.Slice(accounts, func(i, j int) bool {
-			return fmt.Sprint(accounts[i]["username"]) < fmt.Sprint(accounts[j]["username"])
-		})
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(accounts)
 	})
 
-	// 3. Current User Profile (Protected)
+	// 3. Current User Profile (Protected) resolved from the live session
 	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		session, err := state.Sessions.Resolve(bearerToken(r))
+		if err != nil {
+			writeAPIError(w, "Session expired", http.StatusUnauthorized)
+			return
+		}
+		state.mu.RLock()
+		account, exists := state.Users[session.Username]
+		state.mu.RUnlock()
+		twoFactor := false
+		if exists {
+			twoFactor = account.TwoFactorEnabled
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"username": "admin",
-			"role":     "admin",
-			"status":   "active",
+			"username":         session.Username,
+			"role":             string(session.Role),
+			"status":           "active",
+			"twoFactorEnabled": twoFactor,
+			"expiresAt":        session.ExpiresAt.UTC().Format(time.RFC3339),
+			"activeSessions":   state.Sessions.Count(),
+			"permissions":      rbac.GetRolePermissions(session.Role),
 		})
 	})
 
 	// 4. Cluster Fleet Telemetry (Protected - system.fleet.read)
+	// Without a registered remote node this node reports itself, built from the
+	// real hostname and the host's routable address.
 	mux.HandleFunc("/api/v1/cluster/fleet", func(w http.ResponseWriter, r *http.Request) {
 		state.mu.RLock()
 		nodes := state.ClusterNodes
 		state.mu.RUnlock()
+
+		if len(nodes) == 0 {
+			hostname, err := os.Hostname()
+			if err != nil || strings.TrimSpace(hostname) == "" {
+				hostname = "localhost"
+			}
+			nodes = []ClusterNode{{
+				ID:           "node-local",
+				Name:         hostname,
+				Hostname:     hostname,
+				IPAddress:    hosting.PrimaryIPv4(),
+				Role:         "hub",
+				Status:       "online",
+				PanelVersion: PanelVersion,
+			}}
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -760,8 +1073,25 @@ func NewServerHandler(state *ServerState) http.Handler {
 
 	// 7. Hosting Accounts (Protected - accounts.create / accounts.read)
 	mux.HandleFunc("/api/v1/hosting/accounts", func(w http.ResponseWriter, r *http.Request) {
+		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		if sessionErr != nil {
+			writeAPIError(w, "Session expired", http.StatusUnauthorized)
+			return
+		}
+
 		if r.Method == "GET" {
 			accounts := state.HostingManager.ListAccounts()
+			// A client role only ever sees its own account. Elevated roles are
+			// governed by the route permission table.
+			if session.Role == rbac.RoleUser {
+				scoped := make([]*hosting.HostingAccount, 0, 1)
+				for _, account := range accounts {
+					if account.Username == session.Username {
+						scoped = append(scoped, account)
+					}
+				}
+				accounts = scoped
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(accounts)
 			return
@@ -769,23 +1099,24 @@ func NewServerHandler(state *ServerState) http.Handler {
 
 		if r.Method == "POST" {
 			var req hosting.CreateAccountRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				http.Error(w, "Bad request", http.StatusBadRequest)
+			if err := decodeJSONBody(w, r, &req); err != nil {
+				writeAPIError(w, "Invalid account payload: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			acc, err := state.HostingManager.CreateAccount(req)
 			if err != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				writeAPIError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			state.AuditLogger.Append("admin", "account.create", "account", acc.Username, fmt.Sprintf(`{"domain":"%s"}`, acc.PrimaryDomain), r.RemoteAddr)
+			state.AuditLogger.Append(session.Username, "account.create", "account", acc.Username,
+				fmt.Sprintf(`{"domain":%q,"package":%q}`, acc.PrimaryDomain, acc.PackageID), clientIP(r, state.TrustedProxies))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(acc)
 			return
 		}
+
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
 	})
 
 	mux.HandleFunc("/api/v1/hosting/accounts/suspend", func(w http.ResponseWriter, r *http.Request) {
@@ -849,6 +1180,64 @@ func NewServerHandler(state *ServerState) http.Handler {
 		state.AuditLogger.Append("admin", "account.terminate", "account", req.Username, `{"status":"terminated"}`, r.RemoteAddr)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"terminated": true})
+	})
+
+	// Account package change and usage refresh. Both act on the live record the
+	// hosting manager enforces, so the plan shown in the panel is the plan in use.
+	mux.HandleFunc("/api/v1/hosting/accounts/package", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		if sessionErr != nil {
+			writeAPIError(w, "Session expired", http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			Username string `json:"username"`
+			Package  string `json:"package"`
+		}
+		if err := decodeJSONBody(w, r, &req); err != nil {
+			writeAPIError(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		updated, err := state.HostingManager.ChangeAccountPackage(req.Username, req.Package)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, hosting.ErrAccountNotFound) || errors.Is(err, hosting.ErrPackageNotFound) {
+				status = http.StatusNotFound
+			}
+			writeAPIError(w, err.Error(), status)
+			return
+		}
+		state.AuditLogger.Append(session.Username, "account.change_package", "account", updated.Username,
+			fmt.Sprintf(`{"package":%q}`, updated.PackageID), clientIP(r, state.TrustedProxies))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(updated)
+	})
+
+	mux.HandleFunc("/api/v1/hosting/accounts/usage", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		username := strings.TrimSpace(r.URL.Query().Get("username"))
+		if username == "" {
+			writeAPIError(w, "username is required", http.StatusBadRequest)
+			return
+		}
+		if err := state.authorizeAccountScope(r, username); err != nil {
+			writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+			return
+		}
+		account, err := state.HostingManager.RefreshUsage(username)
+		if err != nil {
+			writeAPIError(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(account)
 	})
 
 	// 8. Runtime App Manager (Protected - runtimes.view / runtimes.manage)
@@ -1667,7 +2056,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 	})
 
 	// Wrap mux with Default-Deny & RBAC router enforcement
-	return WithDefaultDenyAuthAndRbac(mux, publicRoutes)
+	return WithDefaultDenyAuthAndRbac(mux, publicRoutes, state)
 }
 
 func main() {

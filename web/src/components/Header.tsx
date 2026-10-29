@@ -12,20 +12,25 @@ import {
   Globe, 
   Server, 
   ShieldCheck, 
-  User, 
   ChevronDown, 
   Check,
   Activity,
   Network,
   Cpu,
-  FileText
+  FileText,
+  LogOut
 } from 'lucide-react';
 import type { UserRole, Language, ThemeMode } from '../types';
 import { getTranslation } from '../i18n/translations';
 
+export interface HeaderNotification {
+  title: string;
+  detail: string;
+}
+
 interface HeaderProps {
   currentRole: UserRole;
-  onRoleChange: (role: UserRole) => void;
+  onSignOut: () => void;
   activeView: string;
   onViewChange: (view: string) => void;
   language: Language;
@@ -35,11 +40,13 @@ interface HeaderProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onOpenTerminal: () => void;
+  displayName?: string;
+  notifications?: HeaderNotification[];
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentRole,
-  onRoleChange,
+  onSignOut,
   activeView,
   onViewChange,
   language,
@@ -48,7 +55,9 @@ export const Header: React.FC<HeaderProps> = ({
   onThemeToggle,
   searchQuery,
   onSearchChange,
-  onOpenTerminal
+  onOpenTerminal,
+  displayName,
+  notifications = []
 }) => {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -378,15 +387,17 @@ export const Header: React.FC<HeaderProps> = ({
             style={{ position: 'relative' }}
           >
             <Bell size={18} />
-            <span style={{
-              position: 'absolute',
-              top: '6px',
-              right: '6px',
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: 'var(--brand-primary)'
-            }} />
+            {notifications.length > 0 ? (
+              <span style={{
+                position: 'absolute',
+                top: '6px',
+                right: '6px',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: 'var(--brand-primary)'
+              }} />
+            ) : null}
           </button>
           {showNotifications && (
             <div className="glass-panel" style={{
@@ -401,17 +412,19 @@ export const Header: React.FC<HeaderProps> = ({
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('notifications')}</span>
-                <span className="badge-online">{t('headerActiveServices')}</span>
+                <span className={notifications.length > 0 ? 'badge-warning' : 'badge-online'}>{notifications.length}</span>
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                <div style={{ padding: '8px 0', borderBottom: '1px solid var(--glass-border)' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{t('notifSslRenewed')}</div>
-                  <div>{t('notifSslRenewedDetail')}</div>
-                </div>
-                <div style={{ padding: '8px 0' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{t('notifClusterHealth')}</div>
-                  <div>{t('notifClusterHealthDetail')}</div>
-                </div>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: '8px 0' }}>{t('headerNoNotifications')}</div>
+                ) : (
+                  notifications.map((notification, index) => (
+                    <div key={`${notification.title}-${index}`} style={{ padding: '8px 0', borderBottom: index < notifications.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{notification.title}</div>
+                      <div>{notification.detail}</div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -449,7 +462,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div style={{ textAlign: 'left', lineHeight: 1.1 }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 700 }}>
-                {currentRole === 'admin' ? t('headerRootAdmin') : currentRole === 'reseller' ? t('headerResellerPro') : 'testuser'}
+                {displayName || (currentRole === 'admin' ? t('headerRootAdmin') : currentRole === 'reseller' ? t('headerResellerPro') : t('clientPanel'))}
               </div>
             </div>
             <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
@@ -473,13 +486,20 @@ export const Header: React.FC<HeaderProps> = ({
                 color: 'var(--text-muted)', 
                 textTransform: 'uppercase' 
               }}>
-                {t('headerSwitchPersona')}
+                {t('headerSignedInAs')}
               </div>
-              <button 
-                onClick={() => { 
-                  onRoleChange('admin'); 
-                  onViewChange('dashboard'); 
-                  setShowRoleMenu(false); 
+              <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <ShieldCheck size={16} style={{ color: 'var(--brand-primary)' }} />
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700 }}>{displayName}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{roleLabels[currentRole]}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRoleMenu(false);
+                  onSignOut();
                 }}
                 style={{
                   width: '100%',
@@ -489,72 +509,15 @@ export const Header: React.FC<HeaderProps> = ({
                   padding: '8px 12px',
                   borderRadius: '6px',
                   border: 'none',
-                  background: currentRole === 'admin' ? 'rgba(234, 88, 12, 0.12)' : 'transparent',
-                  color: currentRole === 'admin' ? 'var(--brand-primary)' : 'var(--text-main)',
-                  fontWeight: currentRole === 'admin' ? 700 : 500,
+                  background: 'transparent',
+                  color: '#ef4444',
+                  fontWeight: 600,
                   cursor: 'pointer',
                   textAlign: 'left'
                 }}
               >
-                <ShieldCheck size={16} />
-                <div>
-                  <div>{t('adminPanel')}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('headerAdminDesc')}</div>
-                </div>
-              </button>
-              <button 
-                onClick={() => { 
-                  onRoleChange('reseller'); 
-                  onViewChange('dashboard'); 
-                  setShowRoleMenu(false); 
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: currentRole === 'reseller' ? 'rgba(234, 88, 12, 0.12)' : 'transparent',
-                  color: currentRole === 'reseller' ? 'var(--brand-primary)' : 'var(--text-main)',
-                  fontWeight: currentRole === 'reseller' ? 700 : 500,
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-              >
-                <User size={16} />
-                <div>
-                  <div>{t('resellerPanel')}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('headerResellerDesc')}</div>
-                </div>
-              </button>
-              <button 
-                onClick={() => { 
-                  onRoleChange('user'); 
-                  onViewChange('home'); 
-                  setShowRoleMenu(false); 
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: currentRole === 'user' ? 'rgba(234, 88, 12, 0.12)' : 'transparent',
-                  color: currentRole === 'user' ? 'var(--brand-primary)' : 'var(--text-main)',
-                  fontWeight: currentRole === 'user' ? 700 : 500,
-                  cursor: 'pointer',
-                  textAlign: 'left'
-                }}
-              >
-                <Server size={16} />
-                <div>
-                  <div>{t('clientPanel')}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('headerUserDesc')}</div>
-                </div>
+                <LogOut size={16} />
+                <span>{t('headerSignOut')}</span>
               </button>
             </div>
           )}

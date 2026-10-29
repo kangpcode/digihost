@@ -48,22 +48,24 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({
 
   const t = (key: any) => getTranslation(language, key);
 
-  // Reseller Pool Quota Aggregations
+  // Pool aggregations are derived from the real account records: usage comes
+  // from measured directory sizes and the ceiling is the sum of the limits the
+  // hosting engine assigned to those accounts.
   const totalAccountsUsed = accounts.length;
-  const maxAccountsAllowed = 25;
-  const accountsQuotaPercent = Math.min(100, Math.round((totalAccountsUsed / maxAccountsAllowed) * 100));
+  const suspendedAccounts = accounts.filter((account) => account.status === 'suspended').length;
 
   const totalDiskUsedMb = accounts.reduce((acc, curr) => acc + curr.diskUsageMb, 0);
+  const totalDiskLimitMb = accounts.reduce((acc, curr) => acc + curr.diskLimitMb, 0);
   const totalDiskUsedGb = Math.round((totalDiskUsedMb / 1024) * 10) / 10;
-  const maxDiskGb = 100.0;
-  const diskQuotaPercent = Math.min(100, Math.round((totalDiskUsedGb / maxDiskGb) * 100));
+  const totalDiskLimitGb = Math.round((totalDiskLimitMb / 1024) * 10) / 10;
+  const diskQuotaPercent = totalDiskLimitMb > 0 ? Math.min(100, Math.round((totalDiskUsedMb / totalDiskLimitMb) * 100)) : 0;
 
   const totalBwUsedMb = accounts.reduce((acc, curr) => acc + curr.bandwidthUsageMb, 0);
+  const totalBwLimitMb = accounts.reduce((acc, curr) => acc + curr.bandwidthLimitMb, 0);
   const totalBwUsedGb = Math.round((totalBwUsedMb / 1024) * 10) / 10;
-  const maxBwGb = 1000.0;
-  const bwQuotaPercent = Math.min(100, Math.round((totalBwUsedGb / maxBwGb) * 100));
+  const totalBwLimitGb = Math.round((totalBwLimitMb / 1024) * 10) / 10;
+  const bwQuotaPercent = totalBwLimitMb > 0 ? Math.min(100, Math.round((totalBwUsedMb / totalBwLimitMb) * 100)) : 0;
 
-  const totalDatabases = accounts.reduce((acc, curr) => acc + curr.databasesCount, 0);
   const totalDomains = accounts.reduce((acc, curr) => acc + (curr.domain ? 1 : 0), 0);
 
   const filteredAccounts = accounts.filter(acc => {
@@ -151,14 +153,14 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({
               {totalAccountsUsed}
             </span>
             <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
-              / {maxAccountsAllowed} accounts ({accountsQuotaPercent}%)
+              {t('resellerActiveAccounts')}: {totalAccountsUsed - suspendedAccounts} | {t('accountsSuspended')}: {suspendedAccounts}
             </span>
           </div>
           <div className="progress-bar-container" style={{ height: '8px', background: 'var(--sidebar-border)', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{
-              width: `${accountsQuotaPercent}%`,
+              width: totalAccountsUsed > 0 ? `${Math.round(((totalAccountsUsed - suspendedAccounts) / totalAccountsUsed) * 100)}%` : '0%',
               height: '100%',
-              background: accountsQuotaPercent > 80 ? 'var(--brand-danger)' : 'var(--brand-primary)',
+              background: 'var(--brand-primary)',
               borderRadius: '4px',
               transition: 'width 0.4s ease'
             }} />
@@ -178,7 +180,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({
               {totalDiskUsedGb} GB
             </span>
             <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
-              / {maxDiskGb} GB ({diskQuotaPercent}%)
+              / {totalDiskLimitGb} GB ({diskQuotaPercent}%)
             </span>
           </div>
           <div className="progress-bar-container" style={{ height: '8px', background: 'var(--sidebar-border)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -205,7 +207,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({
               {totalBwUsedGb} GB
             </span>
             <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
-              / {maxBwGb} GB ({bwQuotaPercent}%)
+              / {totalBwLimitGb} GB ({bwQuotaPercent}%)
             </span>
           </div>
           <div className="progress-bar-container" style={{ height: '8px', background: 'var(--sidebar-border)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -322,7 +324,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({
             </div>
             <div>
               <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>{t('resellerPackages')}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{totalDatabases} databases active</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{totalAccountsUsed} {t('resellerClientAccounts')}</div>
             </div>
           </button>
         </div>

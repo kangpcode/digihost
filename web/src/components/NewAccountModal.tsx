@@ -1,15 +1,25 @@
-// DigiPanel New Hosting Account Creation Modal
-// Zero emojis, strictly Lucide SVG iconography, modern glass styling
+// DigiPanel New Hosting Account modal.
+// Submits to the core hosting API. Plan choices are the limit definitions the
+// provisioning engine actually enforces, and the result reflects the server
+// response instead of a simulated progress sequence.
 
-import React, { useState } from 'react';
-import { UserPlus, X, Globe, Lock, Check } from 'lucide-react';
-import type { HostingAccount, Language } from '../types';
+import React, { useEffect, useState } from 'react';
+import { UserPlus, X, AlertCircle } from 'lucide-react';
+import type { ApiAccount, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
+import { apiFetch } from '../api/client';
+
+interface PackageOption {
+  id: string;
+  name: string;
+  diskLimitBytes: number;
+  defaultPhpVersion: string;
+}
 
 interface NewAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAccountCreated: (account: HostingAccount) => void;
+  onAccountCreated: (account?: ApiAccount) => void;
   language: Language;
 }
 
@@ -23,76 +33,70 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
 
   const [domain, setDomain] = useState('');
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [plan, setPlan] = useState('Standard Cloud');
-  const [phpVersion, setPhpVersion] = useState('8.3');
-  const [diskLimitMb] = useState(10240);
+  const [plan, setPlan] = useState('');
+  const [phpVersion, setPhpVersion] = useState('');
+  const [packages, setPackages] = useState<PackageOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [stepStatus, setStepStatus] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [created, setCreated] = useState<ApiAccount | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setError('');
+    setCreated(null);
+    apiFetch<PackageOption[]>('/api/v1/hosting/packages')
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        setPackages(list);
+        if (list.length > 0) {
+          setPlan((current) => current || list[0].name);
+          setPhpVersion((current) => current || list[0].defaultPhpVersion);
+        }
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleDomainChange = (val: string) => {
-    setDomain(val);
-    const cleanUser = val.split('.')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 8);
-    if (!username || username === '') {
-      setUsername(cleanUser || 'client');
-    }
+  const handleDomainChange = (value: string) => {
+    setDomain(value);
+    const clean = value.split('.')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 12);
+    if (!username) setUsername(clean);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!domain || !username || !password) return;
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!domain || !username || !plan) return;
 
     setIsSubmitting(true);
-    setStepStatus([t('newAccStepUser')]);
-
-    setTimeout(() => {
-      setStepStatus(prev => [...prev, t('newAccStepVhost')]);
-    }, 400);
-
-    setTimeout(() => {
-      setStepStatus(prev => [...prev, t('newAccStepDb')]);
-    }, 800);
-
-    setTimeout(() => {
-      setStepStatus(prev => [...prev, t('newAccStepSsl')]);
-    }, 1200);
-
-    setTimeout(() => {
-      const newAcc: HostingAccount = {
-        id: `acc-${Date.now()}`,
-        username,
-        domain,
-        plan,
-        diskUsageMb: 12,
-        diskLimitMb,
-        bandwidthUsageMb: 0,
-        bandwidthLimitMb: 51200,
-        databasesCount: 1,
-        databasesLimit: 5,
-        emailCount: 1,
-        emailLimit: 10,
-        inodesCount: 420,
-        inodesLimit: 50000,
-        status: 'active',
-        phpVersion,
-        ipAddress: '103.189.201.42',
-        createdAt: new Date().toISOString().split('T')[0],
-        sslActive: true
-      };
-
-      onAccountCreated(newAcc);
+    setError('');
+    try {
+      const account = await apiFetch<ApiAccount>('/api/v1/hosting/accounts', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenantId: 'tenant-default',
+          username,
+          domain,
+          package: plan,
+          phpVersion: phpVersion || undefined
+        })
+      });
+      setCreated(account);
+      onAccountCreated(account);
+      setDomain('');
+      setUsername('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
       setIsSubmitting(false);
-      onClose();
-    }, 1600);
+    }
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div 
-        className="modal-content" 
-        onClick={(e) => e.stopPropagation()} 
+      <div
+        className="modal-content"
+        onClick={(event) => event.stopPropagation()}
         style={{ maxWidth: '640px', padding: '28px' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -113,145 +117,93 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>
                 {t('modalNewAccountTitle')}
               </h2>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {t('newAccSubtitle')}
-              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('newAccSubtitle')}</div>
             </div>
           </div>
-          <button onClick={onClose} className="btn-icon">
+          <button type="button" onClick={onClose} className="btn-icon">
             <X size={20} />
           </button>
         </div>
 
-        {isSubmitting ? (
-          <div style={{ padding: '30px 20px', textAlign: 'center' }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '50%',
-              border: '3px solid rgba(234, 88, 12, 0.2)',
-              borderTopColor: 'var(--brand-primary)',
-              animation: 'spin 0.8s linear infinite',
-              margin: '0 auto 20px auto'
-            }} />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '12px' }}>
-              {t('newAccProvisioning')}
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '420px', margin: '0 auto', textAlign: 'left', fontSize: '0.82rem' }}>
-              {stepStatus.map((step, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--status-online)' }}>
-                  <Check size={14} />
-                  <span>{step}</span>
-                </div>
-              ))}
+        {created ? (
+          <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', borderColor: 'rgba(16, 185, 129, 0.35)' }}>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>{t('newAccSuccess')}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {created.username} &middot; {created.primaryDomain} &middot; {created.packageId}
+            </div>
+            <div className="font-mono" style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>{created.documentRoot}</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>{t('close')}</button>
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                {t('newAccDomainLabel')}
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {error ? (
+              <div className="glass-card" style={{ padding: '10px 14px', display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.82rem', borderColor: 'rgba(239, 68, 68, 0.35)' }}>
+                <AlertCircle size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {t('newAccDomainLabel')}
+              <input
+                className="input-glass"
+                required
+                value={domain}
+                onChange={(event) => handleDomainChange(event.target.value)}
+                placeholder={t('newAccDomainPh')}
+              />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {t('newAccUserLabel')}
+              <input
+                className="input-glass"
+                required
+                value={username}
+                onChange={(event) => setUsername(event.target.value.toLowerCase())}
+                placeholder="clientname"
+              />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                3-32 karakter, huruf kecil, angka, atau garis bawah
+              </span>
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {t('thPlan')}
+                <select className="input-glass" value={plan} onChange={(event) => setPlan(event.target.value)} required>
+                  {packages.length === 0 ? <option value="">{t('plansEmpty')}</option> : null}
+                  {packages.map((option) => (
+                    <option key={option.id} value={option.name}>{option.name}</option>
+                  ))}
+                </select>
               </label>
-              <div style={{ position: 'relative' }}>
-                <Globe size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input 
-                  type="text"
-                  placeholder={t('newAccDomainPh')}
-                  value={domain}
-                  onChange={(e) => handleDomainChange(e.target.value)}
-                  className="input-glass font-mono"
-                  style={{ paddingLeft: '38px', height: '40px' }}
-                  required
-                />
-              </div>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  {t('newAccUserLabel')}
-                </label>
-                <input 
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="input-glass font-mono"
-                  style={{ height: '40px' }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  {t('newAccPasswordLabel')}
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                  <input 
-                    type="password"
-                    placeholder={t('newAccPasswordPh')}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input-glass"
-                    style={{ paddingLeft: '36px', height: '40px' }}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  {t('thPlan')}
-                </label>
-                <select 
-                  value={plan} 
-                  onChange={(e) => setPlan(e.target.value)}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {t('newAccPhpLabel')}
+                <input
                   className="input-glass"
-                  style={{ height: '40px' }}
-                >
-                  <option value="Starter Cloud">{t('planStarter')}</option>
-                  <option value="Standard Cloud">{t('planStandard')}</option>
-                  <option value="Pro Developer">{t('planPro')}</option>
-                  <option value="Enterprise Fleet">{t('planEnterprise')}</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  {t('newAccPhpLabel')}
-                </label>
-                <select 
-                  value={phpVersion} 
-                  onChange={(e) => setPhpVersion(e.target.value)}
-                  className="input-glass font-mono"
-                  style={{ height: '40px' }}
-                >
-                  <option value="8.3">{t('newAccPhp83')}</option>
-                  <option value="8.2">PHP 8.2 FPM</option>
-                  <option value="8.1">PHP 8.1 FPM</option>
-                </select>
-              </div>
+                  value={phpVersion}
+                  onChange={(event) => setPhpVersion(event.target.value)}
+                  placeholder="8.3"
+                />
+              </label>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-              <button type="button" onClick={onClose} className="btn btn-secondary">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isSubmitting}>
                 {t('cancel')}
               </button>
-              <button type="submit" className="btn btn-primary">
-                <Check size={16} />
-                <span>{t('create')}</span>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={isSubmitting || packages.length === 0}>
+                <UserPlus size={14} />
+                {isSubmitting ? t('newAccProvisioning') : t('create')}
               </button>
             </div>
           </form>
         )}
       </div>
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 };

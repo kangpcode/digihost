@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"digipanel/core/rbac"
 )
 
 func setupAppsTestServer(t *testing.T) (*ServerState, http.Handler) {
@@ -68,7 +70,7 @@ func TestAppsCatalogueAuthenticationAndContent(t *testing.T) {
 		t.Fatalf("expected 401 without token, got %d", unauthorised.Code)
 	}
 
-	reply := doAppsRequest(handler, "GET", "/api/v1/apps/catalog", TestAuthToken, nil)
+	reply := doAppsRequest(handler, "GET", "/api/v1/apps/catalog", adminToken(t, handler), nil)
 	if reply.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", reply.Code, reply.Body.String())
 	}
@@ -92,19 +94,21 @@ func TestAppsCatalogueAuthenticationAndContent(t *testing.T) {
 }
 
 func TestAppsCatalogueRBAC(t *testing.T) {
-	_, handler := setupAppsTestServer(t)
+	state, handler := setupAppsTestServer(t)
+	staffToken := createUserWithRole(t, state, handler, "support_staff", "StaffAccess2026!", rbac.RoleStaff)
+	userToken := createUserWithRole(t, state, handler, "client_user", "ClientAccess2026!", rbac.RoleUser)
 
-	staffRead := doAppsRequest(handler, "GET", "/api/v1/apps/catalog", "token-role-staff", nil)
+	staffRead := doAppsRequest(handler, "GET", "/api/v1/apps/catalog", staffToken, nil)
 	if staffRead.Code != http.StatusOK {
 		t.Fatalf("staff should read the catalogue, got %d", staffRead.Code)
 	}
 
-	staffInstall := doAppsRequest(handler, "POST", "/api/v1/apps/install", "token-role-staff", map[string]any{"packageId": "wordpress"})
+	staffInstall := doAppsRequest(handler, "POST", "/api/v1/apps/install", staffToken, map[string]any{"packageId": "wordpress"})
 	if staffInstall.Code != http.StatusForbidden {
 		t.Fatalf("staff install should be forbidden, got %d", staffInstall.Code)
 	}
 
-	userInstall := doAppsRequest(handler, "POST", "/api/v1/apps/install", "token-role-user", map[string]any{"packageId": "wordpress"})
+	userInstall := doAppsRequest(handler, "POST", "/api/v1/apps/install", userToken, map[string]any{"packageId": "wordpress"})
 	if userInstall.Code != http.StatusBadRequest {
 		t.Fatalf("user install should reach validation (400), got %d: %s", userInstall.Code, userInstall.Body.String())
 	}
@@ -132,7 +136,7 @@ func TestAppsInstallValidationAndErrorMapping(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			response := doAppsRequest(handler, "POST", "/api/v1/apps/install", TestAuthToken, testCase.body)
+			response := doAppsRequest(handler, "POST", "/api/v1/apps/install", adminToken(t, handler), testCase.body)
 			if response.Code != testCase.want {
 				t.Fatalf("expected %d, got %d: %s", testCase.want, response.Code, response.Body.String())
 			}
@@ -161,7 +165,7 @@ func TestAppsInstanceRoutesValidateIdentifiers(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			response := doAppsRequest(handler, testCase.method, testCase.path, TestAuthToken, testCase.body)
+			response := doAppsRequest(handler, testCase.method, testCase.path, adminToken(t, handler), testCase.body)
 			if response.Code != testCase.want {
 				t.Fatalf("expected %d, got %d: %s", testCase.want, response.Code, response.Body.String())
 			}
@@ -171,7 +175,7 @@ func TestAppsInstanceRoutesValidateIdentifiers(t *testing.T) {
 
 func TestAppsInstancesStartsEmpty(t *testing.T) {
 	_, handler := setupAppsTestServer(t)
-	response := doAppsRequest(handler, "GET", "/api/v1/apps/instances", TestAuthToken, nil)
+	response := doAppsRequest(handler, "GET", "/api/v1/apps/instances", adminToken(t, handler), nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", response.Code)
 	}

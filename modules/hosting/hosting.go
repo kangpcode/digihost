@@ -29,14 +29,14 @@ var (
 		"digipanel": true, "nginx": true, "postgres": true, "mysql": true,
 	}
 
-	ErrInvalidUsername    = errors.New("username format invalid: must be 3-32 lowercase alphanumeric characters starting with letter")
-	ErrReservedUsername   = errors.New("username is reserved by system")
-	ErrInvalidDomain      = errors.New("domain format invalid")
-	ErrAccountExists      = errors.New("account username or domain already exists")
-	ErrAccountNotFound    = errors.New("hosting account not found")
-	ErrPackageNotFound    = errors.New("hosting package plan not found")
-	ErrAccountSuspended   = errors.New("account is currently suspended")
-	ErrPermissionDenied   = errors.New("access denied: cross-tenant isolation boundary violated")
+	ErrInvalidUsername  = errors.New("username format invalid: must be 3-32 lowercase alphanumeric characters starting with letter")
+	ErrReservedUsername = errors.New("username is reserved by system")
+	ErrInvalidDomain    = errors.New("domain format invalid")
+	ErrAccountExists    = errors.New("account username or domain already exists")
+	ErrAccountNotFound  = errors.New("hosting account not found")
+	ErrPackageNotFound  = errors.New("hosting package plan not found")
+	ErrAccountSuspended = errors.New("account is currently suspended")
+	ErrPermissionDenied = errors.New("access denied: cross-tenant isolation boundary violated")
 )
 
 type AccountPackage struct {
@@ -95,16 +95,16 @@ type CreateAccountRequest struct {
 }
 
 type Manager struct {
-	mu           sync.RWMutex
-	baseDir      string
-	vhostDir     string
-	poolDir      string
-	dnsDir       string
-	cgroupsDir   string
-	accounts     map[string]*HostingAccount // username -> account
-	domains      map[string]string          // domain -> username
-	packages     map[string]*AccountPackage // name -> package
-	nextUID      int
+	mu         sync.RWMutex
+	baseDir    string
+	vhostDir   string
+	poolDir    string
+	dnsDir     string
+	cgroupsDir string
+	accounts   map[string]*HostingAccount // username -> account
+	domains    map[string]string          // domain -> username
+	packages   map[string]*AccountPackage // name -> package
+	nextUID    int
 }
 
 func NewManager(baseStorageDir string) *Manager {
@@ -134,7 +134,7 @@ func NewManager(baseStorageDir string) *Manager {
 	mgr.packages["starter"] = &AccountPackage{
 		ID:                  "pkg-starter",
 		Name:                "starter",
-		DiskLimitBytes:      1073741824, // 1GB
+		DiskLimitBytes:      1073741824,  // 1GB
 		BandwidthLimitBytes: 10737418240, // 10GB
 		InodesLimit:         50000,
 		MaxDomains:          1,
@@ -148,7 +148,7 @@ func NewManager(baseStorageDir string) *Manager {
 	mgr.packages["pro"] = &AccountPackage{
 		ID:                  "pkg-pro",
 		Name:                "pro",
-		DiskLimitBytes:      10737418240, // 10GB
+		DiskLimitBytes:      10737418240,  // 10GB
 		BandwidthLimitBytes: 107374182400, // 100GB
 		InodesLimit:         200000,
 		MaxDomains:          10,
@@ -206,10 +206,18 @@ func (m *Manager) CreateAccount(req CreateAccountRequest) (*HostingAccount, erro
 		return nil, fmt.Errorf("%w: domain '%s'", ErrAccountExists, domain)
 	}
 
-	pkgName := strings.ToLower(req.Package)
+	tenantID := strings.TrimSpace(req.TenantID)
+	if tenantID == "" {
+		tenantID = "tenant-default"
+	}
+
+	pkgName := strings.ToLower(strings.TrimSpace(req.Package))
+	if pkgName == "" {
+		pkgName = "starter"
+	}
 	pkg, exists := m.packages[pkgName]
 	if !exists {
-		pkg = m.packages["starter"]
+		return nil, fmt.Errorf("%w: %s", ErrPackageNotFound, pkgName)
 	}
 
 	phpVer := req.PhpVersion
@@ -218,7 +226,9 @@ func (m *Manager) CreateAccount(req CreateAccountRequest) (*HostingAccount, erro
 	}
 	ipAddr := req.IPAddress
 	if ipAddr == "" {
-		ipAddr = "103.189.201.42"
+		// Bind the account to the host's real routable address. A host with no
+		// routable IPv4 keeps an empty value rather than a fabricated one.
+		ipAddr = PrimaryIPv4()
 	}
 
 	uid := m.nextUID
@@ -351,23 +361,27 @@ mail    IN  A     %s
 
 	// Success: commit state and clear rollback stack
 	now := time.Now()
+	diskUsed, inodesUsed, measureErr := measureDirectory(homeDir)
+	if measureErr != nil {
+		diskUsed, inodesUsed = 0, 0
+	}
 	account := &HostingAccount{
 		ID:                  fmt.Sprintf("acc-%d", time.Now().UnixNano()),
-		TenantID:            req.TenantID,
+		TenantID:            tenantID,
 		Username:            username,
 		PrimaryDomain:       domain,
-		PackageID:           pkg.ID,
+		PackageID:           pkg.Name,
 		PosixUID:            uid,
 		PosixGID:            uid,
 		HomeDir:             homeDir,
 		DocumentRoot:        docRoot,
 		PhpVersion:          phpVer,
 		DiskLimitBytes:      pkg.DiskLimitBytes,
-		DiskUsedBytes:       4096,
+		DiskUsedBytes:       diskUsed,
 		BandwidthLimitBytes: pkg.BandwidthLimitBytes,
 		BandwidthUsedBytes:  0,
 		InodesLimit:         pkg.InodesLimit,
-		InodesUsed:          1,
+		InodesUsed:          inodesUsed,
 		Status:              StatusActive,
 		IPAddress:           ipAddr,
 		CgroupsPath:         cgroupPath,
@@ -482,13 +496,15 @@ func (m *Manager) ListPackages() []*AccountPackage {
 	return out
 }
 
-func (m *Manager) ListAccounts() []*HostingAccount {	m.mu.RLock()
+func (m *Manager) ListAccounts() []*HostingAccount {
+	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	list := make([]*HostingAccount, 0, len(m.accounts))
 	for _, acc := range m.accounts {
 		list = append(list, acc)
 	}
+	sort.Slice(list, func(i, j int) bool { return list[i].Username < list[j].Username })
 	return list
 }
 
@@ -496,4 +512,144 @@ func (m *Manager) CountAccounts() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.accounts)
+}
+
+var (
+	safePackageRegex  = regexp.MustCompile(`^[a-z][a-z0-9\-]{1,31}$`)
+	ErrPackageExists  = errors.New("hosting package already exists")
+	ErrPackageInUse   = errors.New("hosting package is assigned to accounts and cannot be deleted")
+	ErrInvalidPackage = errors.New("invalid hosting package definition")
+)
+
+// normalisePackage validates a plan definition and fills safe defaults so a
+// caller can never persist a plan with zero or negative limits.
+func normalisePackage(pkg AccountPackage) (AccountPackage, error) {
+	pkg.Name = strings.ToLower(strings.TrimSpace(pkg.Name))
+	if !safePackageRegex.MatchString(pkg.Name) {
+		return pkg, errInvalidPackage("name must be 2-32 lowercase characters, digits, or dashes and start with a letter")
+	}
+	if strings.TrimSpace(pkg.ID) == "" {
+		pkg.ID = "pkg-" + pkg.Name
+	}
+	if pkg.DiskLimitBytes <= 0 {
+		return pkg, errInvalidPackage("diskLimitBytes must be positive")
+	}
+	if pkg.BandwidthLimitBytes <= 0 {
+		return pkg, errInvalidPackage("bandwidthLimitBytes must be positive")
+	}
+	if pkg.InodesLimit <= 0 {
+		return pkg, errInvalidPackage("inodesLimit must be positive")
+	}
+	if pkg.MaxDomains <= 0 {
+		return pkg, errInvalidPackage("maxDomains must be positive")
+	}
+	if pkg.MaxDatabases < 0 {
+		return pkg, errInvalidPackage("maxDatabases cannot be negative")
+	}
+	if pkg.MaxEmailAccounts < 0 {
+		return pkg, errInvalidPackage("maxEmailAccounts cannot be negative")
+	}
+	if pkg.MemoryLimitMb <= 0 {
+		return pkg, errInvalidPackage("memoryLimitMb must be positive")
+	}
+	if pkg.PidsLimit <= 0 {
+		return pkg, errInvalidPackage("pidsLimit must be positive")
+	}
+	if strings.TrimSpace(pkg.DefaultPhpVersion) == "" {
+		pkg.DefaultPhpVersion = "8.3"
+	}
+	return pkg, nil
+}
+
+func errInvalidPackage(message string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidPackage, message)
+}
+
+// CreatePackage registers a new hosting plan that immediately becomes usable by
+// account provisioning.
+func (m *Manager) CreatePackage(pkg AccountPackage) (*AccountPackage, error) {
+	normalised, err := normalisePackage(pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.packages[normalised.Name]; exists {
+		return nil, ErrPackageExists
+	}
+	stored := normalised
+	m.packages[normalised.Name] = &stored
+	copied := stored
+	return &copied, nil
+}
+
+// UpdatePackage replaces the limits of an existing plan. Accounts already on the
+// plan pick up the new limits on their next usage refresh.
+func (m *Manager) UpdatePackage(name string, pkg AccountPackage) (*AccountPackage, error) {
+	key := strings.ToLower(strings.TrimSpace(name))
+	pkg.Name = key
+	normalised, err := normalisePackage(pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	existing, exists := m.packages[key]
+	if !exists {
+		return nil, ErrPackageNotFound
+	}
+	normalised.ID = existing.ID
+	stored := normalised
+	m.packages[key] = &stored
+	copied := stored
+	return &copied, nil
+}
+
+// DeletePackage removes an unused plan. A plan assigned to any live account is
+// refused so accounts never reference a missing definition.
+func (m *Manager) DeletePackage(name string) error {
+	key := strings.ToLower(strings.TrimSpace(name))
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.packages[key]; !exists {
+		return ErrPackageNotFound
+	}
+	for _, acc := range m.accounts {
+		if acc.PackageID == key {
+			return ErrPackageInUse
+		}
+	}
+	delete(m.packages, key)
+	return nil
+}
+
+// ChangeAccountPackage moves an account to another plan and re-applies the plan
+// limits to the account record.
+func (m *Manager) ChangeAccountPackage(username, packageName string) (*HostingAccount, error) {
+	key := strings.ToLower(strings.TrimSpace(packageName))
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	acc, exists := m.accounts[username]
+	if !exists {
+		return nil, ErrAccountNotFound
+	}
+	pkg, pkgExists := m.packages[key]
+	if !pkgExists {
+		return nil, ErrPackageNotFound
+	}
+	acc.PackageID = key
+	acc.DiskLimitBytes = pkg.DiskLimitBytes
+	acc.BandwidthLimitBytes = pkg.BandwidthLimitBytes
+	acc.InodesLimit = pkg.InodesLimit
+	if pkg.DefaultPhpVersion != "" {
+		acc.PhpVersion = pkg.DefaultPhpVersion
+	}
+	acc.UpdatedAt = time.Now().UTC()
+	copied := *acc
+	return &copied, nil
 }

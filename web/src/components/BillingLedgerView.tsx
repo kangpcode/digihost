@@ -1,228 +1,290 @@
-// DigiPanel Native Billing Engine & Double-Entry Ledger (Section 7)
-// Zero emojis, strictly Lucide SVG iconography, modern glass styling
+// DigiPanel Native Billing view.
+// Invoices are created through the core billing API with integer minor units.
+// Payments settle atomically and post a balanced debit/credit pair into the
+// ledger. Nothing on this screen is pre-filled with sample revenue.
 
-import React, { useState } from 'react';
-import { 
-  FileText, 
-  TrendingUp, 
-  CheckCircle2, 
-  Clock, 
-  Download,
-  BookOpen,
-  ArrowUpRight,
-  ArrowDownLeft,
-  ChevronRight
-} from 'lucide-react';
-import type { BillingInvoice, LedgerEntry, Language } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FileText, Download, BookOpen, RefreshCw, Plus, CheckCircle2, AlertTriangle, CreditCard } from 'lucide-react';
+import type { Invoice, LedgerResponse, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
+import { apiFetch } from '../api/client';
+import { OpsEmpty, OpsError, OpsHeader, StatusPill } from './opsShared';
 
-interface BillingLedgerViewProps {
-  language: Language;
-}
+const formatMoney = (cents: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2
+    }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency}`;
+  }
+};
 
-export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }) => {
+const todayIso = (): string => new Date().toISOString().slice(0, 10);
+
+export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }) => {
   const t = (key: any) => getTranslation(language, key);
 
-  const [activeTab, setActiveTab] = useState<'invoices' | 'ledger' | 'plans'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'ledger'>('invoices');
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [ledger, setLedger] = useState<LedgerResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [ledgerError, setLedgerError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busyInvoice, setBusyInvoice] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    clientName: '',
+    clientEmail: '',
+    amount: '',
+    currency: 'IDR',
+    dueDate: todayIso(),
+    description: ''
+  });
 
-  const [invoices] = useState<BillingInvoice[]>([
-    {
-      id: 'inv-1001',
-      invoiceNumber: 'INV-2026-0042',
-      clientName: 'PT Nusantara Digital',
-      clientEmail: 'billing@nusantara.id',
-      amountCents: 15000000, // IDR 150,000
-      currency: 'IDR',
-      status: 'paid',
-      issueDate: '2026-10-01',
-      dueDate: '2026-10-15',
-      itemDescription: 'Standard Cloud Hosting (Annual + Let\'s Encrypt Wildcard)'
-    },
-    {
-      id: 'inv-1002',
-      invoiceNumber: 'INV-2026-0043',
-      clientName: 'testuser',
-      clientEmail: 'testuser@digipanel.live',
-      amountCents: 5000000, // IDR 50,000
-      currency: 'IDR',
-      status: 'paid',
-      issueDate: '2026-10-15',
-      dueDate: '2026-10-29',
-      itemDescription: 'Starter Cloud Package (Monthly Plan)'
-    },
-    {
-      id: 'inv-1003',
-      invoiceNumber: 'INV-2026-0044',
-      clientName: 'Artha Media Studio',
-      clientEmail: 'finance@arthamedia.co.id',
-      amountCents: 45000000, // IDR 450,000
-      currency: 'IDR',
-      status: 'unpaid',
-      issueDate: '2026-10-24',
-      dueDate: '2026-11-07',
-      itemDescription: 'Reseller Enterprise Tier (Monthly 100 Accounts Quota)'
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    setLedgerError('');
+    const [invoiceResult, ledgerResult] = await Promise.allSettled([
+      apiFetch<Invoice[]>('/api/v1/billing/invoices'),
+      apiFetch<LedgerResponse>('/api/v1/billing/ledger')
+    ]);
+
+    if (invoiceResult.status === 'fulfilled') {
+      setInvoices(Array.isArray(invoiceResult.value) ? invoiceResult.value : []);
+    } else {
+      setError(invoiceResult.reason instanceof Error ? invoiceResult.reason.message : String(invoiceResult.reason));
     }
-  ]);
 
-  const ledgerEntries: LedgerEntry[] = [
-    {
-      id: 'led-1',
-      timestamp: '2026-10-15 10:24:00',
-      transactionRef: 'TXN-98402',
-      accountDebit: '1010-CASH-GATEWAY-MIDTRANS',
-      accountCredit: '4010-REVENUE-HOSTING-PLANS',
-      amountCents: 5000000,
-      currency: 'IDR',
-      description: 'Invoice #INV-2026-0043 settlement via QRIS/VA'
-    },
-    {
-      id: 'led-2',
-      timestamp: '2026-10-01 08:12:00',
-      transactionRef: 'TXN-98214',
-      accountDebit: '1010-CASH-GATEWAY-XENDIT',
-      accountCredit: '4010-REVENUE-HOSTING-PLANS',
-      amountCents: 15000000,
-      currency: 'IDR',
-      description: 'Invoice #INV-2026-0042 annual renewal'
+    if (ledgerResult.status === 'fulfilled') {
+      setLedger(ledgerResult.value);
+    } else {
+      setLedger(null);
+      setLedgerError(ledgerResult.reason instanceof Error ? ledgerResult.reason.message : String(ledgerResult.reason));
     }
-  ];
+    setLoading(false);
+  };
 
-  const formatCurrency = (cents: number, cur: string) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: cur,
-      maximumFractionDigits: 0
-    }).format(cents / 100);
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const totals = useMemo(() => {
+    let invoiced = 0;
+    let paid = 0;
+    let outstanding = 0;
+    for (const invoice of invoices) {
+      invoiced += invoice.amountCents;
+      if (invoice.status === 'paid') paid += invoice.amountCents;
+      if (invoice.status === 'unpaid') outstanding += invoice.amountCents;
+    }
+    return { invoiced, paid, outstanding };
+  }, [invoices]);
+
+  const defaultCurrency = invoices[0]?.currency || 'IDR';
+
+  const createInvoice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const amountValue = Number(form.amount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setError(t('billingAmountInvalid'));
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      await apiFetch<Invoice>('/api/v1/billing/invoices', {
+        method: 'POST',
+        body: JSON.stringify({
+          clientName: form.clientName,
+          clientEmail: form.clientEmail,
+          amountCents: Math.round(amountValue * 100),
+          currency: form.currency,
+          dueDate: form.dueDate,
+          description: form.description
+        })
+      });
+      setNotice(t('billingInvoiceCreated'));
+      setShowForm(false);
+      setForm({ clientName: '', clientEmail: '', amount: '', currency: form.currency, dueDate: todayIso(), description: '' });
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const settle = async (invoice: Invoice) => {
+    if (!window.confirm(`${t('billingMarkPaid')} ${invoice.invoiceNumber} (${formatMoney(invoice.amountCents, invoice.currency)})?`)) {
+      return;
+    }
+    const reference = window.prompt(t('billingReference'), '');
+    if (reference === null) return;
+    setBusyInvoice(invoice.id);
+    setError('');
+    try {
+      await apiFetch('/api/v1/billing/invoices/pay', {
+        method: 'POST',
+        body: JSON.stringify({ invoiceId: invoice.id, gateway: 'manual', gatewayReference: reference })
+      });
+      setNotice(`${invoice.invoiceNumber}: ${t('billingPaid')}`);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusyInvoice('');
+    }
+  };
+
+  const exportCsv = () => {
+    const header = ['invoice', 'client', 'email', 'amountCents', 'currency', 'status', 'issueDate', 'dueDate', 'description'];
+    const rows = invoices.map((invoice) => [
+      invoice.invoiceNumber,
+      invoice.clientName,
+      invoice.clientEmail,
+      String(invoice.amountCents),
+      invoice.currency,
+      invoice.status,
+      invoice.issueDate,
+      invoice.dueDate,
+      invoice.description
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `digipanel-invoices-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Header */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-          <span>{t('adminPanel')}</span>
-          <ChevronRight size={14} />
-          <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{t('navBilling')}</span>
-        </div>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-          {t('billingTitle')}
-        </h1>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          {t('billingSubtitle')}
-        </p>
-      </div>
-
-      {/* Summary Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '16px'
-      }}>
-        <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingMrr')}</div>
-            <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>
-              {formatCurrency(65000000, 'IDR')}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--status-online)', marginTop: '4px' }}>
-              &uarr; 14.2% {t('billingVsLastMonth')}
-            </div>
-          </div>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'rgba(16, 185, 129, 0.12)',
-            color: 'var(--status-online)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <TrendingUp size={20} />
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingInvoicesPaid')}</div>
-            <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>
-              {formatCurrency(20000000, 'IDR')}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {t('billingInvoicesSettled').replace('{count}', '2')}
-            </div>
-          </div>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'rgba(2, 132, 199, 0.12)',
-            color: 'var(--status-info)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <CheckCircle2 size={20} />
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingPendingReceivables')}</div>
-            <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>
-              {formatCurrency(45000000, 'IDR')}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--status-warning)', marginTop: '4px' }}>
-              {t('billingAwaitingPayment').replace('{count}', '1')}
-            </div>
-          </div>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'rgba(245, 158, 11, 0.12)',
-            color: 'var(--status-warning)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Clock size={20} />
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
-        <button
-          onClick={() => setActiveTab('invoices')}
-          className={`btn btn-sm ${activeTab === 'invoices' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          <FileText size={14} />
-          <span>{t('billingTabInvoices')}</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('ledger')}
-          className={`btn btn-sm ${activeTab === 'ledger' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          <BookOpen size={14} />
-          <span>{t('billingTabLedger')}</span>
-        </button>
-      </div>
-
-      {/* Invoices Tab */}
-      {activeTab === 'invoices' && (
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              {t('billingRecentOrders')}
-            </h3>
-            <button className="btn btn-secondary btn-sm">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <OpsHeader
+        title={t('billingTitle')}
+        subtitle={t('billingSubtitle')}
+        action={
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void load()} disabled={loading}>
+              <RefreshCw size={14} />
+              {t('refresh')}
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={exportCsv} disabled={invoices.length === 0}>
               <Download size={14} />
-              <span>{t('billingExportCsv')}</span>
+              {t('billingExportCsv')}
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowForm((value) => !value)}>
+              <Plus size={14} />
+              {t('billingNewInvoice')}
             </button>
           </div>
+        }
+      />
 
-          <div style={{ overflowX: 'auto' }}>
+      {notice ? (
+        <div className="glass-card" style={{ padding: '10px 14px', fontSize: '0.82rem', borderColor: 'rgba(16, 185, 129, 0.35)' }}>{notice}</div>
+      ) : null}
+      {error ? <OpsError message={error} onDismiss={() => setError('')} /> : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+        {[
+          { label: t('billingTotalInvoiced'), value: formatMoney(totals.invoiced, defaultCurrency), icon: FileText },
+          { label: t('billingInvoicesPaid'), value: formatMoney(totals.paid, defaultCurrency), icon: CheckCircle2 },
+          { label: t('billingPendingReceivables'), value: formatMoney(totals.outstanding, defaultCurrency), icon: CreditCard }
+        ].map((card) => (
+          <div key={card.label} className="glass-card" style={{ padding: '16px 18px', display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+            <div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{card.label}</div>
+              <div className="font-mono" style={{ fontSize: '1.3rem', fontWeight: 800 }}>{card.value}</div>
+            </div>
+            <card.icon size={20} style={{ color: 'var(--brand-primary)' }} />
+          </div>
+        ))}
+        <div className="glass-card" style={{ padding: '16px 18px', display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingTabLedger')}</div>
+            {ledger ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', fontWeight: 700, color: ledger.isBalanced ? 'var(--status-online)' : '#ef4444' }}>
+                {ledger.isBalanced ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                {ledger.isBalanced ? t('billingBalanceOk') : t('billingBalanceBad')}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t('billingLedgerRestricted')}</div>
+            )}
+          </div>
+          <BookOpen size={20} style={{ color: 'var(--brand-accent)' }} />
+        </div>
+      </div>
+
+      {showForm ? (
+        <form onSubmit={createInvoice} className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{t('billingNewInvoice')}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              {t('billingClientName')}
+              <input className="input-glass" required value={form.clientName} onChange={(event) => setForm((prev) => ({ ...prev, clientName: event.target.value }))} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              {t('billingClientEmail')}
+              <input className="input-glass" type="email" required value={form.clientEmail} onChange={(event) => setForm((prev) => ({ ...prev, clientEmail: event.target.value }))} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              {t('billingAmountLabel')}
+              <input className="input-glass" type="number" min="0.01" step="0.01" required value={form.amount} onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              {t('billingCurrency')}
+              <select className="input-glass" value={form.currency} onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}>
+                <option value="IDR">IDR</option>
+                <option value="USD">USD</option>
+                <option value="SGD">SGD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              {t('billingThDue')}
+              <input className="input-glass" type="date" value={form.dueDate} onChange={(event) => setForm((prev) => ({ ...prev, dueDate: event.target.value }))} />
+            </label>
+          </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+            {t('billingThDescription')}
+            <input className="input-glass" required maxLength={300} value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} />
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)} disabled={submitting}>{t('cancel')}</button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>{t('create')}</button>
+          </div>
+        </form>
+      ) : null}
+
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <button type="button" className={activeTab === 'invoices' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('invoices')}>
+          <FileText size={13} />
+          {t('billingTabInvoices')}
+        </button>
+        <button type="button" className={activeTab === 'ledger' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('ledger')}>
+          <BookOpen size={13} />
+          {t('billingTabLedger')}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>{t('appsLoading')}</div>
+      ) : activeTab === 'invoices' ? (
+        invoices.length === 0 ? (
+          <OpsEmpty message={t('billingNoInvoices')} />
+        ) : (
+          <div className="glass-panel" style={{ overflowX: 'auto' }}>
             <table className="glass-table">
               <thead>
                 <tr>
@@ -230,105 +292,71 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
                   <th>{t('billingThClient')}</th>
                   <th>{t('billingThDescription')}</th>
                   <th>{t('billingThAmount')}</th>
-                  <th>{t('mailThStatus')}</th>
                   <th>{t('billingThDue')}</th>
+                  <th>{t('thStatus')}</th>
                   <th style={{ textAlign: 'right' }}>{t('thActions')}</th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.map(inv => (
-                  <tr key={inv.id}>
-                    <td className="font-mono" style={{ fontWeight: 700 }}>
-                      {inv.invoiceNumber}
-                    </td>
+                {invoices.map((invoice) => (
+                  <tr key={invoice.id}>
+                    <td className="font-mono" style={{ fontSize: '0.78rem', fontWeight: 700 }}>{invoice.invoiceNumber}</td>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{inv.clientName}</div>
-                      <div className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>{inv.clientEmail}</div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>{invoice.clientName}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{invoice.clientEmail}</div>
                     </td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                      {inv.itemDescription}
-                    </td>
-                    <td className="font-mono" style={{ fontWeight: 700 }}>
-                      {formatCurrency(inv.amountCents, inv.currency)}
-                    </td>
-                    <td>
-                      {inv.status === 'paid' ? (
-                        <span className="badge-online">{t('billingPaid')}</span>
+                    <td style={{ fontSize: '0.78rem', maxWidth: '260px' }}>{invoice.description}</td>
+                    <td className="font-mono" style={{ fontSize: '0.8rem' }}>{formatMoney(invoice.amountCents, invoice.currency)}</td>
+                    <td className="font-mono" style={{ fontSize: '0.74rem' }}>{invoice.dueDate}</td>
+                    <td><StatusPill status={invoice.status} /></td>
+                    <td style={{ textAlign: 'right' }}>
+                      {invoice.status === 'unpaid' ? (
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busyInvoice === invoice.id} onClick={() => void settle(invoice)}>
+                          <CreditCard size={12} />
+                          {t('billingMarkPaid')}
+                        </button>
                       ) : (
-                        <span className="badge-warning">{t('billingUnpaid')}</span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString() : '-'}</span>
                       )}
                     </td>
-                    <td className="font-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      {inv.dueDate}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: '0.74rem' }}>
-                        {t('billingViewPdf')}
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* Ledger Tab */}
-      {activeTab === 'ledger' && (
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px' }}>
-              {t('billingLedgerTitle')}
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {t('billingLedgerDesc')}
-            </p>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table className="glass-table">
-              <thead>
-                <tr>
-                  <th>{t('billingThTimestamp')}</th>
-                  <th>{t('billingThTxnRef')}</th>
-                  <th>{t('billingThDebit')}</th>
-                  <th>{t('billingThCredit')}</th>
-                  <th>{t('billingThAmount')}</th>
-                  <th>{t('billingThMemo')}</th>
+        )
+      ) : ledgerError ? (
+        <OpsError message={ledgerError} />
+      ) : !ledger || ledger.entries.length === 0 ? (
+        <OpsEmpty message={t('billingNoLedger')} />
+      ) : (
+        <div className="glass-panel" style={{ overflowX: 'auto' }}>
+          <table className="glass-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>{t('billingThTxnRef')}</th>
+                <th>{t('billingThDebit')}</th>
+                <th>{t('billingThCredit')}</th>
+                <th>{t('billingThAmount')}</th>
+                <th>{t('billingThMemo')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="font-mono" style={{ fontSize: '0.72rem' }}>{entry.id}</td>
+                  <td className="font-mono" style={{ fontSize: '0.74rem' }}>{entry.txRef}</td>
+                  <td className="font-mono" style={{ fontSize: '0.72rem' }}>{entry.direction === 'debit' ? entry.accountCode : '-'}</td>
+                  <td className="font-mono" style={{ fontSize: '0.72rem' }}>{entry.direction === 'credit' ? entry.accountCode : '-'}</td>
+                  <td className="font-mono" style={{ fontSize: '0.78rem' }}>{formatMoney(entry.amountCents, entry.currency)}</td>
+                  <td style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{entry.direction}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {ledgerEntries.map(entry => (
-                  <tr key={entry.id}>
-                    <td className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {entry.timestamp}
-                    </td>
-                    <td className="font-mono" style={{ fontWeight: 600, color: 'var(--brand-primary)' }}>
-                      {entry.transactionRef}
-                    </td>
-                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <ArrowUpRight size={13} style={{ color: 'var(--status-online)' }} />
-                        <span>{entry.accountDebit}</span>
-                      </div>
-                    </td>
-                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <ArrowDownLeft size={13} style={{ color: 'var(--brand-accent)' }} />
-                        <span>{entry.accountCredit}</span>
-                      </div>
-                    </td>
-                    <td className="font-mono" style={{ fontWeight: 700 }}>
-                      {formatCurrency(entry.amountCents, entry.currency)}
-                    </td>
-                    <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      {entry.description}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ padding: '10px 14px', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+            {t('billingThDebit')} {formatMoney(ledger.totalDebits, ledger.currency)} &middot; {t('billingThCredit')} {formatMoney(ledger.totalCredits, ledger.currency)}
           </div>
         </div>
       )}

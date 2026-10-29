@@ -37,7 +37,7 @@ func TestArgon2idLoginSuccess(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{
 		"username": "admin",
-		"password": "admin123",
+		"password": testAdminPassword,
 	})
 
 	req, _ := http.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
@@ -123,11 +123,14 @@ func TestTotpTwoFactorEnforcement(t *testing.T) {
 }
 
 func TestRbacRoleEndpointAccessControl(t *testing.T) {
-	_, handler := setupIntegratedTestServer()
+	state, handler := setupIntegratedTestServer()
+	adminSession := login(t, handler, "admin", testAdminPassword)
+	resellerSession := createUserWithRole(t, state, handler, "reseller_ops", "ResellerAccess2026!", rbac.RoleReseller)
+	userSession := createUserWithRole(t, state, handler, "client_ops", "ClientAccess2026!", rbac.RoleUser)
 
 	// Admin access to fleet (requires system.fleet.read) -> allowed
 	reqAdmin, _ := http.NewRequest("GET", "/api/v1/cluster/fleet", nil)
-	reqAdmin.Header.Set("Authorization", "Bearer token-role-admin")
+	reqAdmin.Header.Set("Authorization", "Bearer "+adminSession)
 	rrAdmin := httptest.NewRecorder()
 	handler.ServeHTTP(rrAdmin, reqAdmin)
 
@@ -137,7 +140,7 @@ func TestRbacRoleEndpointAccessControl(t *testing.T) {
 
 	// Reseller access to fleet -> forbidden
 	reqReseller, _ := http.NewRequest("GET", "/api/v1/cluster/fleet", nil)
-	reqReseller.Header.Set("Authorization", "Bearer token-role-reseller")
+	reqReseller.Header.Set("Authorization", "Bearer "+resellerSession)
 	rrReseller := httptest.NewRecorder()
 	handler.ServeHTTP(rrReseller, reqReseller)
 
@@ -147,11 +150,21 @@ func TestRbacRoleEndpointAccessControl(t *testing.T) {
 
 	// User access to audit logs (requires audit.logs.read) -> forbidden
 	reqUserAudit, _ := http.NewRequest("GET", "/api/v1/audit/logs", nil)
-	reqUserAudit.Header.Set("Authorization", "Bearer token-role-user")
+	reqUserAudit.Header.Set("Authorization", "Bearer "+userSession)
 	rrUserAudit := httptest.NewRecorder()
 	handler.ServeHTTP(rrUserAudit, reqUserAudit)
 
 	if rrUserAudit.Code != http.StatusForbidden {
 		t.Errorf("Security failure: User should be forbidden from audit logs (got %d, expected 403)", rrUserAudit.Code)
+	}
+
+	// A role cannot be claimed by putting a role name in the token: only issued
+	// session tokens resolve, and an unissued string is rejected.
+	forged, _ := http.NewRequest("GET", "/api/v1/cluster/fleet", nil)
+	forged.Header.Set("Authorization", "Bearer token-role-admin")
+	rrForged := httptest.NewRecorder()
+	handler.ServeHTTP(rrForged, forged)
+	if rrForged.Code != http.StatusUnauthorized {
+		t.Errorf("Security failure: forged role token must be rejected, got %d", rrForged.Code)
 	}
 }

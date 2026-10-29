@@ -7,14 +7,12 @@ import {
   Globe, 
   Layers, 
   Folder, 
-  Database, 
   Mail, 
   ListFilter, 
   BarChart3, 
   Shield, 
   Cpu, 
   Terminal, 
-  Settings, 
   Search, 
   ChevronRight, 
   ChevronDown, 
@@ -35,6 +33,9 @@ interface SidebarProps {
   language: Language;
   onSelectCategory?: (category: string) => void;
   selectedCategory?: string;
+  hostname?: string;
+  kernel?: string;
+  panelVersion?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -43,7 +44,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   language,
   onSelectCategory,
-  selectedCategory = 'all'
+  selectedCategory = 'all',
+  hostname = '',
+  kernel = '',
+  panelVersion = ''
 }) => {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -106,6 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'server_status', label: t('navServerStatus'), icon: Activity },
         { id: 'access_logs', label: t('navAccessLogs'), icon: FileText },
+        { id: 'audit', label: t('auditTitle'), icon: Shield },
       ]
     },
     {
@@ -165,21 +170,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   ];
 
+  // Client menu entries all resolve to a capability that exists in this build.
   const userMenuItems = [
-    { id: 'home', label: t('navHome'), icon: Home, category: 'all' },
-    { id: 'domains', label: t('navDomains'), icon: Globe, category: 'domains' },
-    { id: 'wordpress', label: t('navWordPress'), icon: Layers, category: 'software' },
-    { id: 'files', label: t('navFiles'), icon: Folder, category: 'files' },
-    { id: 'databases', label: t('navDatabases'), icon: Database, category: 'databases' },
-    { id: 'emails', label: t('navEmails'), icon: Mail, category: 'emails' },
-    { id: 'mailing_lists', label: t('navMailingLists'), icon: ListFilter, category: 'emails' },
-    { id: 'runtimes', label: 'Node, Python, Go, PHP', icon: Cpu, category: 'software' },
-    { id: 'apps', label: t('navAppMarketplace'), icon: Boxes, category: 'software' },
-    { id: 'metrics', label: t('navMetrics'), icon: BarChart3, category: 'metrics' },
-    { id: 'security', label: t('navSecurity'), icon: Shield, category: 'security' },
-    { id: 'software', label: t('navSoftware'), icon: Cpu, category: 'software' },
-    { id: 'advanced', label: t('navAdvanced'), icon: Terminal, category: 'advanced' },
-    { id: 'preferences', label: t('navPreferences'), icon: Settings, category: 'preferences' },
+    { id: 'home', label: t('navHome'), icon: Home, target: 'home' },
+    { id: 'domains', label: t('navDomains'), icon: Globe, target: 'domains' },
+    { id: 'files', label: t('navFiles'), icon: Folder, target: 'files' },
+    { id: 'emails', label: t('navEmails'), icon: Mail, target: 'emails' },
+    { id: 'apps', label: t('navAppMarketplace'), icon: Boxes, target: 'apps' },
+    { id: 'runtimes', label: t('navRuntimes'), icon: Cpu, target: 'runtimes' },
+    { id: 'metrics', label: t('navMetrics'), icon: BarChart3, target: 'server_status' },
+    { id: 'security', label: t('navSecurity'), icon: Shield, target: 'security' },
+    { id: 'advanced', label: t('navAdvanced'), icon: Terminal, target: 'advanced' },
   ];
 
   return (
@@ -309,26 +310,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {userMenuItems
               .filter(item => sidebarSearch === '' || item.label.toLowerCase().includes(sidebarSearch.toLowerCase()))
               .map(item => {
-                const targetView = item.id === 'apps' || item.id === 'wordpress' || item.id === 'software'
-                  ? 'apps'
-                  : item.id === 'runtimes'
-                    ? 'runtimes'
-                    : 'home';
-                const isActive = targetView !== 'home'
-                  ? activeView === targetView
-                  : ((item.id === 'home' && activeView === 'home' && selectedCategory === 'all') ||
-                     (activeView === 'home' && selectedCategory === item.category && item.category !== 'all'));
+                const isActive = activeView === item.target || (item.target === 'domains' && activeView === 'home' && selectedCategory === 'domains');
 
                 return (
                   <button
                     key={item.id}
                     onClick={() => {
-                      if (item.id === 'home') {
-                        onSelectCategory?.('all');
-                      } else {
-                        onSelectCategory?.(item.category);
-                      }
-                      onViewChange(targetView);
+                      onSelectCategory?.(item.id === 'home' ? 'all' : item.id);
+                      onViewChange(item.target);
                     }}
                     style={{
                       width: '100%',
@@ -370,13 +359,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         color: 'var(--text-muted)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        gap: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span className="service-dot online" />
-          <span>v1.2.0-stable</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+          <span className={`service-dot ${panelVersion ? 'online' : 'offline'}`} />
+          <span className="font-mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {panelVersion ? `v${panelVersion}` : 'API offline'}
+          </span>
         </div>
-        <span className="font-mono">Linux 6.8</span>
+        <span className="font-mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${hostname} ${kernel}`}>
+          {kernel || hostname || '-'}
+        </span>
       </div>
     </aside>
   );

@@ -1,486 +1,220 @@
-// DigiPanel Cluster Fleet Dashboard (Matching Image 3)
-// Zero emojis, strictly Lucide SVG iconography, modern glass styling
+// DigiPanel Cluster and Host Inventory view.
+// Renders the node registry that the core actually reports plus live telemetry
+// for the local host. Metrics that a remote node does not publish are shown as
+// not reported instead of being estimated.
 
 import React from 'react';
-import { 
-  Server, 
-  RefreshCw, 
-  Plus, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Cpu, 
-  Users, 
-  Radio, 
-  HeartPulse, 
-  ShieldCheck, 
+import {
+  Server,
+  RefreshCw,
+  Cpu,
+  Users,
+  Radio,
   ExternalLink,
   Terminal,
-  ChevronRight
+  ChevronRight,
+  HardDrive,
+  Globe,
+  Database,
+  Activity
 } from 'lucide-react';
-import type { ClusterNode, Language } from '../types';
+import type { Telemetry, ServiceStatus, Language, FleetNode } from '../types';
 import { getTranslation } from '../i18n/translations';
+import { OpsEmpty, StatusPill, UsageBar } from './opsShared';
 
 interface ClusterFleetDashboardProps {
-  nodes: ClusterNode[];
+  nodes: FleetNode[];
+  telemetry: Telemetry | null;
+  services: ServiceStatus[];
+  servicesAvailable: boolean;
+  inventory: {
+    accounts: number;
+    domains: number;
+    databases: number;
+    resellers: number;
+  };
   language: Language;
-  onConnectNode: () => void;
   onRefreshFleet: () => void;
   onOpenTerminal: () => void;
-  onLoginNode: (nodeId: string) => void;
 }
 
 export const ClusterFleetDashboard: React.FC<ClusterFleetDashboardProps> = ({
   nodes,
+  telemetry,
+  services,
+  servicesAvailable,
+  inventory,
   language,
-  onConnectNode,
   onRefreshFleet,
-  onOpenTerminal,
-  onLoginNode
+  onOpenTerminal
 }) => {
   const t = (key: any) => getTranslation(language, key);
 
-  const totalServers = nodes.length;
-  const onlineServers = nodes.filter(n => n.status === 'online').length;
-  const avgCpu = (nodes.reduce((acc, curr) => acc + curr.cpuPercent, 0) / (nodes.length || 1)).toFixed(1);
-  const avgRam = (nodes.reduce((acc, curr) => acc + curr.ramPercent, 0) / (nodes.length || 1)).toFixed(1);
-  const totalFleetAccounts = nodes.reduce((acc, curr) => acc + curr.inventory.accounts, 0);
+  const onlineNodes = nodes.filter((node) => node.status === 'online').length;
+  const activeServices = services.filter((service) => service.active).length;
+  const memoryPercent = telemetry && telemetry.memoryTotalMb > 0
+    ? (telemetry.memoryUsedMb / telemetry.memoryTotalMb) * 100
+    : 0;
+  const diskPercent = telemetry && telemetry.diskTotalGb > 0
+    ? (telemetry.diskUsedGb / telemetry.diskTotalGb) * 100
+    : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Breadcrumb & Action Header (Image 3) */}
       <div>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '6px', 
-          fontSize: '0.82rem', 
-          color: 'var(--text-muted)',
-          marginBottom: '6px'
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
           <span>{t('navCluster')}</span>
           <ChevronRight size={14} />
           <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{t('navHubDashboard')}</span>
         </div>
-
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <h1 style={{
-              fontSize: '1.6rem',
-              fontWeight: 800,
-              color: 'var(--text-main)',
-              letterSpacing: '-0.02em',
-              marginBottom: '4px'
-            }}>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
               {t('hubFleet')}
             </h1>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {t('hubFleetSubtitle')}
-            </p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{t('hubFleetSubtitle')}</p>
           </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button 
-              onClick={onConnectNode}
-              className="btn btn-primary"
-            >
-              <Plus size={16} />
-              <span>{t('connectNode')}</span>
-            </button>
-            <button 
-              onClick={onRefreshFleet}
-              className="btn btn-secondary"
-            >
+            <button type="button" onClick={onRefreshFleet} className="btn btn-secondary">
               <RefreshCw size={15} />
               <span>{t('refresh')}</span>
             </button>
+            <button type="button" onClick={onOpenTerminal} className="btn btn-primary">
+              <Terminal size={15} />
+              <span>{t('terminalTitle')}</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Overall Health Card (Image 3) */}
-      <div className="glass-panel" style={{
-        padding: '18px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px'
-      }}>
-        <div style={{
-          width: '44px',
-          height: '44px',
-          borderRadius: '12px',
-          background: 'rgba(16, 185, 129, 0.15)',
-          color: 'var(--status-online)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0
-        }}>
-          <CheckCircle2 size={24} />
-        </div>
-        <div>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '2px' }}>
-            {t('fleetOverallHealth')}
-          </h3>
-          <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-            {t('systemStatusLabel')} <span style={{ fontWeight: 600, color: 'var(--status-online)' }}>{t('healthy')}</span>
-            <span style={{ margin: '0 8px', color: 'var(--glass-border)' }}>|</span>
-            {onlineServers} {t('fleetOnlineSummary')}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
+        {[
+          { icon: Server, label: t('metricTotalServers'), value: `${onlineNodes} / ${nodes.length}`, sub: t('fleetOnlineSummary') },
+          { icon: Users, label: t('metricFleetAccounts'), value: String(inventory.accounts), sub: t('metricDomains') },
+          { icon: Globe, label: t('metricDomains'), value: String(inventory.domains), sub: t('navDomains') },
+          { icon: Radio, label: t('metricServicesRunning'), value: servicesAvailable ? `${activeServices} / ${services.length}` : '-', sub: servicesAvailable ? t('serverStatusServices') : t('serverStatusUnavailable') },
+          { icon: Database, label: t('metricDatabases'), value: String(inventory.databases), sub: t('navDatabases') },
+          { icon: Users, label: t('metricResellers'), value: String(inventory.resellers), sub: t('navResellerCenter') }
+        ].map((card) => (
+          <div key={card.label} className="glass-card" style={{ padding: '16px 18px', display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>{card.label}</div>
+              <div className="font-mono" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>{card.value}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{card.sub}</div>
+            </div>
+            <div style={{ width: '38px', height: '38px', borderRadius: '11px', background: 'rgba(234, 88, 12, 0.12)', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <card.icon size={19} />
+            </div>
           </div>
-        </div>
+        ))}
       </div>
 
-      {/* 8 Fleet Metrics Grid (Image 3) */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: '16px'
-      }}>
-        {/* 1. Total Servers */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricTotalServers')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              {totalServers}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              {onlineServers} online, 0 degraded, 0 offline
-            </div>
+      {telemetry ? (
+        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', fontWeight: 700 }}>
+            <Activity size={16} style={{ color: 'var(--brand-primary)' }} />
+            {t('serverStatusResources')}
+            <span className="font-mono" style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+              {telemetry.hostname} {telemetry.publicIp ? `(${telemetry.publicIp})` : ''}
+            </span>
           </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(245, 158, 11, 0.12)',
-            color: 'var(--brand-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Server size={20} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+            <UsageBar used={telemetry.cpuUsagePercent} limit={100} label={`CPU ${telemetry.cpuUsagePercent.toFixed(1)}%`} />
+            <UsageBar used={telemetry.memoryUsedMb} limit={telemetry.memoryTotalMb} label={`${t('memoryUsage')} ${telemetry.memoryUsedMb} / ${telemetry.memoryTotalMb} MB`} />
+            <UsageBar used={telemetry.diskUsedGb} limit={telemetry.diskTotalGb} label={`${t('diskUsage')} ${telemetry.diskUsedGb.toFixed(1)} / ${telemetry.diskTotalGb.toFixed(1)} GB`} />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            <span>{t('osPlatform')}: {telemetry.os || '-'}</span>
+            <span>{t('kernelVersion')}: {telemetry.kernel || '-'}</span>
+            <span>{t('uptime')}: {telemetry.uptime || '-'}</span>
+            <span>{t('loadAverage')}: {telemetry.loadAverage.map((value) => value.toFixed(2)).join(' / ') || '-'}</span>
+            <span>{t('serverStatusProcesses')}: {telemetry.activeProcesses}</span>
+            <span>CPU {Math.round(telemetry.cpuUsagePercent)}% &middot; RAM {Math.round(memoryPercent)}% &middot; Disk {Math.round(diskPercent)}%</span>
           </div>
         </div>
+      ) : null}
 
-        {/* 2. Services Running */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricServicesRunning')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              30/30
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--status-online)', fontWeight: 600 }}>
-              &uarr; 100% uptime
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(16, 185, 129, 0.12)',
-            color: 'var(--status-online)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Radio size={20} />
-          </div>
+      <div className="glass-panel" style={{ padding: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', fontWeight: 700, marginBottom: '12px' }}>
+          <Server size={17} style={{ color: 'var(--brand-primary)' }} />
+          {t('thServer')}
         </div>
-
-        {/* 3. Active Alerts */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricActiveAlerts')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              0
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              0 warnings, 0 critical
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(245, 158, 11, 0.12)',
-            color: 'var(--brand-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <AlertTriangle size={20} />
-          </div>
-        </div>
-
-        {/* 4. Avg Resources */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricAvgResources')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              {avgCpu}% / {avgRam}%
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              CPU / Memory utilization
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(148, 163, 184, 0.15)',
-            color: 'var(--text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Cpu size={20} />
-          </div>
-        </div>
-
-        {/* 5. Fleet Accounts */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricFleetAccounts')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              {totalFleetAccounts}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              domains across the fleet
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(2, 132, 199, 0.12)',
-            color: 'var(--status-info)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Users size={20} />
-          </div>
-        </div>
-
-        {/* 6. Panel Versions */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricPanelVersions')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              1
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              fleet in sync &bull; Hub: v1.2.0
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(99, 102, 241, 0.12)',
-            color: '#6366f1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <RefreshCw size={20} />
-          </div>
-        </div>
-
-        {/* 7. Last Poll */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricLastPoll')}
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              1 min ago
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              polled every 60 seconds
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(244, 63, 94, 0.12)',
-            color: '#f43f5e',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <HeartPulse size={20} />
-          </div>
-        </div>
-
-        {/* 8. DNS Conflicts */}
-        <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-              {t('metricDnsConflicts')}
-            </div>
-            <div className="font-mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-              0
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              no duplicate domains
-            </div>
-          </div>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'rgba(245, 158, 11, 0.12)',
-            color: 'var(--brand-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <ShieldCheck size={20} />
-          </div>
-        </div>
-      </div>
-
-      {/* Comprehensive Server Fleet Table (Image 3) */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '2px' }}>
-              Fleet Infrastructure Matrix
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {t('fleetSubtitle')}
-            </p>
-          </div>
-          <button onClick={onOpenTerminal} className="btn btn-secondary btn-sm">
-            <Terminal size={14} />
-            <span>{t('fleetTerminalBtn')}</span>
-          </button>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table className="glass-table">
-            <thead>
-              <tr>
-                <th>{t('thServer')}</th>
-                <th>{t('thResources')} (CPU / RAM / Disk)</th>
-                <th>{t('thInventory')}</th>
-                <th>{t('thServices')}</th>
-                <th style={{ textAlign: 'right' }}>{t('thActions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {nodes.map(node => (
-                <tr key={node.id}>
-                  {/* Server Info */}
-                  <td style={{ minWidth: '220px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{node.name}</span>
-                      {node.role === 'hub' && (
-                        <span className="badge-pill" style={{ background: 'rgba(234, 88, 12, 0.15)', color: 'var(--brand-primary)' }}>
-                          HUB
-                        </span>
-                      )}
-                      <span className="badge-online">
-                        {node.status}
-                      </span>
-                    </div>
-                    <div className="font-mono" style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                      {node.ipAddress} &bull; {node.panelVersion}
-                    </div>
-                  </td>
-
-                  {/* Resources */}
-                  <td style={{ minWidth: '180px' }}>
-                    <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', fontWeight: 600 }}>
-                      <span className="font-mono" style={{ color: 'var(--brand-primary)' }}>
-                        CPU {node.cpuPercent}%
-                      </span>
-                      <span className="font-mono" style={{ color: 'var(--status-info)' }}>
-                        RAM {node.ramPercent}%
-                      </span>
-                      <span className="font-mono" style={{ color: 'var(--status-online)' }}>
-                        Disk {node.diskPercent}%
-                      </span>
-                    </div>
-                    <div className="progress-bar-container" style={{ marginTop: '6px' }}>
-                      <div 
-                        className="progress-bar-fill" 
-                        style={{ width: `${node.ramPercent}%`, background: 'var(--status-info)' }} 
-                      />
-                    </div>
-                  </td>
-
-                  {/* Inventory */}
-                  <td style={{ minWidth: '160px' }}>
-                    <div className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Acc: <strong style={{ color: 'var(--text-main)' }}>{node.inventory.accounts}</strong> &bull; Dom: <strong style={{ color: 'var(--text-main)' }}>{node.inventory.domains}</strong> &bull; DB: <strong style={{ color: 'var(--text-main)' }}>{node.inventory.databases}</strong>
-                    </div>
-                  </td>
-
-                  {/* Services Matrix (Image 3) */}
-                  <td style={{ minWidth: '260px' }}>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <div title="Web (nginx)" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
-                        <span className={`service-dot ${node.services.web ? 'online' : 'offline'}`} />
-                        <span style={{ color: 'var(--text-muted)' }}>nginx</span>
-                      </div>
-                      <div title="FTP (pure-ftpd)" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
-                        <span className={`service-dot ${node.services.ftp ? 'online' : 'offline'}`} />
-                        <span style={{ color: 'var(--text-muted)' }}>ftpd</span>
-                      </div>
-                      <div title="DNS (pdns)" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
-                        <span className={`service-dot ${node.services.dns ? 'online' : 'offline'}`} />
-                        <span style={{ color: 'var(--text-muted)' }}>pdns</span>
-                      </div>
-                      <div title="Database (mariadb)" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
-                        <span className={`service-dot ${node.services.db ? 'online' : 'offline'}`} />
-                        <span style={{ color: 'var(--text-muted)' }}>mariadb</span>
-                      </div>
-                      <div title="Security (fail2ban)" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
-                        <span className={`service-dot ${node.services.fail2ban ? 'online' : 'offline'}`} />
-                        <span style={{ color: 'var(--text-muted)' }}>f2b</span>
-                      </div>
-                      <div title="Mail (postfix/dovecot)" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}>
-                        <span className={`service-dot ${node.services.postfix ? 'online' : 'offline'}`} />
-                        <span style={{ color: 'var(--text-muted)' }}>mail</span>
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Action */}
-                  <td style={{ textAlign: 'right' }}>
-                    <button 
-                      onClick={() => onLoginNode(node.id)}
-                      className="btn btn-secondary btn-sm"
-                      style={{ padding: '5px 10px', fontSize: '0.75rem' }}
-                    >
-                      <ExternalLink size={12} />
-                      <span>{t('fleetNodeLogin')}</span>
-                    </button>
-                  </td>
+        {nodes.length === 0 ? (
+          <OpsEmpty message={t('serverStatusNoNodes')} />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="glass-table">
+              <thead>
+                <tr>
+                  <th>{t('thServer')}</th>
+                  <th>IP</th>
+                  <th>{t('role')}</th>
+                  <th>{t('appsStatus')}</th>
+                  <th>{t('serverStatusVersion')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('thActions')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {nodes.map((node) => (
+                  <tr key={node.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.82rem' }}>
+                        <Server size={12} style={{ color: 'var(--brand-primary)' }} />
+                        {node.name}
+                      </div>
+                      <div className="font-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{node.hostname}</div>
+                    </td>
+                    <td className="font-mono" style={{ fontSize: '0.75rem' }}>{node.ipAddress || '-'}</td>
+                    <td style={{ fontSize: '0.78rem', textTransform: 'capitalize' }}>{node.role}</td>
+                    <td><StatusPill status={node.status} /></td>
+                    <td className="font-mono" style={{ fontSize: '0.75rem' }}>{node.panelVersion}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button type="button" onClick={onOpenTerminal} className="btn btn-secondary btn-sm">
+                        <ExternalLink size={12} />
+                        <span>{t('fleetNodeLogin')}</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{ marginTop: '10px', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+          {t('fleetRemoteMetricsNote')}
         </div>
+      </div>
+
+      <div className="glass-panel" style={{ padding: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', fontWeight: 700, marginBottom: '12px' }}>
+          <Cpu size={17} style={{ color: 'var(--brand-primary)' }} />
+          {t('serverStatusServices')}
+        </div>
+        {!servicesAvailable ? (
+          <OpsEmpty message={t('serverStatusServicesUnavailable')} />
+        ) : services.length === 0 ? (
+          <OpsEmpty message={t('serverStatusNoServices')} />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '10px' }}>
+            {services.map((service) => (
+              <div key={service.unit} className="glass-card" style={{ padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>{service.name}</span>
+                  <StatusPill status={service.installed ? service.state : 'not-installed'} />
+                </div>
+                <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>{service.unit}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+                  {t('serverStatusCategory')}: {service.category} &middot; {t('serverStatusEnabled')}: {service.enabled ? t('yes') : t('no')}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+        <HardDrive size={15} style={{ color: 'var(--brand-accent)' }} />
+        {t('fleetClusterNote')}
       </div>
     </div>
   );
