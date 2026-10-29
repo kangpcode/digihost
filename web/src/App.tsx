@@ -252,12 +252,12 @@ export const App: React.FC = () => {
     }));
   };
 
-  const handleSwitchToUser = (username: string) => {
+  const handleSwitchToUser = (_username: string) => {
     setCurrentRole('user');
     setActiveView('home');
   };
 
-  const handleLoginNode = (nodeId: string) => {
+  const handleLoginNode = (_nodeId: string) => {
     setIsTerminalOpen(true);
   };
 
