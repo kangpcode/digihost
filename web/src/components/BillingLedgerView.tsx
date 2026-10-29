@@ -105,10 +105,10 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
           <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{t('navBilling')}</span>
         </div>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-          Native Billing Engine & Double-Entry Ledger
+          {t('billingTitle')}
         </h1>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Autonomous provisioning, idempotent webhooks, integer accounting, and compliance ledger.
+          {t('billingSubtitle')}
         </p>
       </div>
 
@@ -120,12 +120,12 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
       }}>
         <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Monthly Recurring (MRR)</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingMrr')}</div>
             <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>
               {formatCurrency(65000000, 'IDR')}
             </div>
             <div style={{ fontSize: '0.74rem', color: 'var(--status-online)', marginTop: '4px' }}>
-              &uarr; 14.2% vs last month
+              &uarr; 14.2% {t('billingVsLastMonth')}
             </div>
           </div>
           <div style={{
@@ -144,12 +144,12 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
 
         <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Total Invoices Paid</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingInvoicesPaid')}</div>
             <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>
               {formatCurrency(20000000, 'IDR')}
             </div>
             <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              2 invoices settled
+              {t('billingInvoicesSettled').replace('{count}', '2')}
             </div>
           </div>
           <div style={{
@@ -168,12 +168,12 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
 
         <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Pending Receivables</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{t('billingPendingReceivables')}</div>
             <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>
               {formatCurrency(45000000, 'IDR')}
             </div>
             <div style={{ fontSize: '0.74rem', color: 'var(--status-warning)', marginTop: '4px' }}>
-              1 invoice awaiting payment
+              {t('billingAwaitingPayment').replace('{count}', '1')}
             </div>
           </div>
           <div style={{
@@ -198,14 +198,14 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
           className={`btn btn-sm ${activeTab === 'invoices' ? 'btn-primary' : 'btn-secondary'}`}
         >
           <FileText size={14} />
-          <span>Invoices & Auto-Provisioning</span>
+          <span>{t('billingTabInvoices')}</span>
         </button>
         <button
           onClick={() => setActiveTab('ledger')}
           className={`btn btn-sm ${activeTab === 'ledger' ? 'btn-primary' : 'btn-secondary'}`}
         >
           <BookOpen size={14} />
-          <span>Double-Entry General Ledger</span>
+          <span>{t('billingTabLedger')}</span>
         </button>
       </div>
 
@@ -214,11 +214,11 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              Recent Orders & Automated Invoices
+              {t('billingRecentOrders')}
             </h3>
             <button className="btn btn-secondary btn-sm">
               <Download size={14} />
-              <span>Export CSV</span>
+              <span>{t('billingExportCsv')}</span>
             </button>
           </div>
 
@@ -226,13 +226,13 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
             <table className="glass-table">
               <thead>
                 <tr>
-                  <th>INVOICE #</th>
-                  <th>CLIENT</th>
-                  <th>DESCRIPTION</th>
-                  <th>AMOUNT</th>
-                  <th>STATUS</th>
-                  <th>DUE DATE</th>
-                  <th style={{ textAlign: 'right' }}>ACTION</th>
+                  <th>{t('billingThInvoice')}</th>
+                  <th>{t('billingThClient')}</th>
+                  <th>{t('billingThDescription')}</th>
+                  <th>{t('billingThAmount')}</th>
+                  <th>{t('mailThStatus')}</th>
+                  <th>{t('billingThDue')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('thActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -253,9 +253,9 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
                     </td>
                     <td>
                       {inv.status === 'paid' ? (
-                        <span className="badge-online">Paid</span>
+                        <span className="badge-online">{t('billingPaid')}</span>
                       ) : (
-                        <span className="badge-warning">Unpaid</span>
+                        <span className="badge-warning">{t('billingUnpaid')}</span>
                       )}
                     </td>
                     <td className="font-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -263,7 +263,7 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: '0.74rem' }}>
-                        View PDF
+                        {t('billingViewPdf')}
                       </button>
                     </td>
                   </tr>
@@ -279,10 +279,10 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ marginBottom: '16px' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px' }}>
-              Immutable Double-Entry Ledger (Balanced Trial Balance)
+              {t('billingLedgerTitle')}
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Every billing transaction writes two balanced debit/credit records with cryptographic transaction reference.
+              {t('billingLedgerDesc')}
             </p>
           </div>
 
@@ -290,12 +290,12 @@ export const BillingLedgerView: React.FC<BillingLedgerViewProps> = ({ language }
             <table className="glass-table">
               <thead>
                 <tr>
-                  <th>TIMESTAMP</th>
-                  <th>TXN REF</th>
-                  <th>DEBIT ACCOUNT</th>
-                  <th>CREDIT ACCOUNT</th>
-                  <th>AMOUNT</th>
-                  <th>MEMO</th>
+                  <th>{t('billingThTimestamp')}</th>
+                  <th>{t('billingThTxnRef')}</th>
+                  <th>{t('billingThDebit')}</th>
+                  <th>{t('billingThCredit')}</th>
+                  <th>{t('billingThAmount')}</th>
+                  <th>{t('billingThMemo')}</th>
                 </tr>
               </thead>
               <tbody>

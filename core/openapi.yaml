@@ -1,12 +1,32 @@
 openapi: 3.1.0
 info:
   title: DigiPanel Core REST API
-  description: API specification for DigiPanel Linux Server Automation, Fleet Management, and Native Billing.
+  description: Production API specification for DigiPanel Linux Server Automation, Fleet Management, and Native Billing.
   version: 1.0.0
 servers:
   - url: https://panel.digihost.id/api/v1
     description: Production Panel Gateway
+  - url: http://127.0.0.1:8080/api/v1
+    description: Local Core Daemon
 paths:
+  /health:
+    get:
+      summary: Health check probe
+      responses:
+        '200':
+          description: Service operational status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: 1.0.0
+
   /auth/login:
     post:
       summary: Authenticate user credentials and issue scoped JWT
@@ -30,14 +50,42 @@ paths:
         '401':
           description: Invalid credentials or invalid 2FA token
 
+  /auth/me:
+    get:
+      summary: Get currently authenticated user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile information
+        '401':
+          description: Unauthorized
+
+  /system/telemetry:
+    get:
+      summary: Retrieve real-time server telemetry and system resources
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Telemetry data
+        '401':
+          description: Unauthorized
+
   /hosting/accounts:
     get:
       summary: List all hosting accounts
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: Array of hosting accounts
+        '401':
+          description: Unauthorized
     post:
       summary: Atomic creation of POSIX user, home dir, vhost, php-fpm pool, and DNS
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -59,17 +107,25 @@ paths:
       responses:
         '201':
           description: Account created successfully
+        '401':
+          description: Unauthorized
 
-  /cluster/fleet:
+  /dns/zones:
     get:
-      summary: Retrieve real-time telemetry from all connected fleet nodes
+      summary: List all DNS zones
+      security:
+        - BearerAuth: []
       responses:
         '200':
-          description: Cluster node status, metrics, and service health matrix
+          description: DNS zones list
+        '401':
+          description: Unauthorized
 
   /dns/zones/{domain}/records:
     get:
       summary: Retrieve all DNS records for a zone
+      security:
+        - BearerAuth: []
       parameters:
         - name: domain
           in: path
@@ -79,8 +135,12 @@ paths:
       responses:
         '200':
           description: DNS record list
+        '401':
+          description: Unauthorized
     post:
       summary: Add record to PowerDNS zone
+      security:
+        - BearerAuth: []
       parameters:
         - name: domain
           in: path
@@ -97,20 +157,69 @@ paths:
               properties:
                 type:
                   type: string
-                  enum: [A, AAAA, CNAME, MX, TXT, SRV, CAA]
+                  enum: [A, AAAA, CNAME, MX, TXT, SRV, CAA, NS, PTR]
                 name:
                   type: string
                 content:
                   type: string
                 ttl:
                   type: integer
+                  default: 3600
+                priority:
+                  type: integer
       responses:
         '201':
-          description: Record committed and zone serial incremented
+          description: Record created successfully
+        '401':
+          description: Unauthorized
+
+  /billing/ledger:
+    get:
+      summary: Retrieve general double-entry ledger balance
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Ledger accounts, entries, and debit/credit balance
+        '401':
+          description: Unauthorized
 
   /billing/invoices:
     get:
       summary: List billing invoices
+      security:
+        - BearerAuth: []
       responses:
         '200':
-          description: Invoice list
+          description: List of invoices
+        '401':
+          description: Unauthorized
+
+  /cluster/fleet:
+    get:
+      summary: Retrieve telemetry from all connected fleet nodes
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Cluster fleet nodes status
+        '401':
+          description: Unauthorized
+
+  /system/modules:
+    get:
+      summary: List installed and available system modules
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Module manifest list
+        '401':
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

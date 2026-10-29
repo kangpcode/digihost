@@ -1,0 +1,21 @@
+{
+  "name": "mail",
+  "version": "1.0.0",
+  "title": "Email Infrastructure",
+  "description": "Enterprise mail server management with Postfix, Dovecot, Rspamd, DKIM, SPF, and DMARC enforcement.",
+  "permissions": [
+    "mail.read",
+    "mail.write",
+    "mail.dkim",
+    "mail.antispam"
+  ],
+  "hooks": [
+    "account.created",
+    "account.suspended",
+    "mail.domain_added"
+  ],
+  "menu": {
+    "section": "email",
+    "priority": 40
+  }
+}

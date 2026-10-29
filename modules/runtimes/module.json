@@ -1,0 +1,22 @@
+{
+  "name": "runtimes",
+  "version": "1.0.0",
+  "title": "Runtime Managers & Supervisors",
+  "description": "Multi-version PHP-FPM, Node.js process manager, Python virtualenv/WSGI runner, and Go static binary supervisor.",
+  "permissions": [
+    "runtimes.read",
+    "runtimes.manage",
+    "runtimes.php_switch",
+    "runtimes.restart"
+  ],
+  "hooks": [
+    "app.started",
+    "app.stopped",
+    "app.restarted",
+    "php.switched"
+  ],
+  "menu": {
+    "section": "software",
+    "priority": 100
+  }
+}

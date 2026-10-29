@@ -61,7 +61,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 {t('modalWhatsAppTitle')}
               </h2>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Instant operational alerts for downtime, ACME renewals, and security blocks
+                {t('waSubtitle')}
               </div>
             </div>
           </div>
@@ -86,17 +86,17 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               <Check size={24} />
             </div>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-              WhatsApp Successfully Linked
+              {t('waLinked')}
             </h3>
             <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-              Test notification dispatched to {phoneNumber}.
+              {t('waTestDispatched')}: {phoneNumber}.
             </p>
           </div>
         ) : (
           <form onSubmit={handleConnect} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                WhatsApp Mobile Number
+                {t('waNumberLabel')}
               </label>
               <div style={{ position: 'relative' }}>
                 <Smartphone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -113,7 +113,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
               <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                Notification Subscriptions
+                {t('waSubscriptions')}
               </span>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', cursor: 'pointer' }}>
                 <input 
@@ -121,7 +121,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   checked={notifyOnDown} 
                   onChange={(e) => setNotifyOnDown(e.target.checked)} 
                 />
-                <span>Server & vhost downtime alerts (HTTP 502/504)</span>
+                <span>{t('waNotifyDown')}</span>
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', cursor: 'pointer' }}>
                 <input 
@@ -129,7 +129,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   checked={notifyOnSsl} 
                   onChange={(e) => setNotifyOnSsl(e.target.checked)} 
                 />
-                <span>ACME SSL certificate auto-renewal notifications</span>
+                <span>{t('waNotifySsl')}</span>
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', cursor: 'pointer' }}>
                 <input 
@@ -137,7 +137,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   checked={notifyOnSecurity} 
                   onChange={(e) => setNotifyOnSecurity(e.target.checked)} 
                 />
-                <span>Fail2ban brute-force attack blocks</span>
+                <span>{t('waNotifySecurity')}</span>
               </label>
             </div>
 
@@ -147,7 +147,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               </button>
               <button type="submit" className="btn btn-primary">
                 <Check size={16} />
-                <span>Pair WhatsApp</span>
+                <span>{t('waPairBtn')}</span>
               </button>
             </div>
           </form>

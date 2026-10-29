@@ -1,0 +1,21 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "title": "Database Management",
+  "description": "Multi-engine database provisioning for MariaDB, MySQL, and PostgreSQL with SSO integration.",
+  "permissions": [
+    "db.read",
+    "db.create",
+    "db.delete",
+    "db.users"
+  ],
+  "hooks": [
+    "account.created",
+    "account.terminated",
+    "db.created"
+  ],
+  "menu": {
+    "section": "databases",
+    "priority": 50
+  }
+}

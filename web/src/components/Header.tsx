@@ -1,5 +1,6 @@
 // DigiPanel Top Navigation Bar
 // Zero emojis, SVG iconography, modern glass styling
+// Clean full-width header with zero overlapping elements
 
 import React, { useState } from 'react';
 import { 
@@ -13,10 +14,11 @@ import {
   ShieldCheck, 
   User, 
   ChevronDown, 
-  Check, 
-  SlidersHorizontal,
-  FileText,
-  Activity
+  Check,
+  Activity,
+  Network,
+  Cpu,
+  FileText
 } from 'lucide-react';
 import type { UserRole, Language, ThemeMode } from '../types';
 import { getTranslation } from '../i18n/translations';
@@ -63,9 +65,10 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header style={{
       height: '68px',
+      width: '100%',
       position: 'sticky',
       top: 0,
-      zIndex: 50,
+      zIndex: 100,
       background: 'var(--topbar-bg)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
@@ -74,10 +77,11 @@ export const Header: React.FC<HeaderProps> = ({
       alignItems: 'center',
       justifyContent: 'space-between',
       padding: '0 24px',
+      boxSizing: 'border-box',
       transition: 'background 0.2s ease, border-color 0.2s ease'
     }}>
-      {/* Left: Brand & Role Switcher */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+      {/* Left: Brand Identity & Hostname & Quick Navigation Tabs */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
         <div 
           onClick={() => {
             if (currentRole === 'admin') onViewChange('dashboard');
@@ -104,102 +108,147 @@ export const Header: React.FC<HeaderProps> = ({
           }}>
             <Zap size={20} strokeWidth={2.5} />
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ 
-                fontSize: '1.25rem', 
-                fontWeight: 800, 
-                letterSpacing: '-0.02em', 
-                color: 'var(--text-main)' 
-              }}>
-                {t('brandName')}
-              </span>
-              <span style={{
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                background: currentRole === 'admin' ? 'rgba(234, 88, 12, 0.15)' : 'rgba(2, 132, 199, 0.15)',
-                color: currentRole === 'admin' ? 'var(--brand-primary)' : 'var(--status-info)',
-                padding: '2px 7px',
-                borderRadius: '6px',
-                border: `1px solid ${currentRole === 'admin' ? 'var(--brand-primary-border)' : 'rgba(2, 132, 199, 0.3)'}`
-              }}>
-                {roleLabels[currentRole]}
-              </span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ 
+              fontSize: '1.25rem', 
+              fontWeight: 800, 
+              letterSpacing: '-0.02em', 
+              color: 'var(--text-main)' 
+            }}>
+              {t('brandName')}
+            </span>
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              background: currentRole === 'admin' ? 'rgba(234, 88, 12, 0.15)' : 'rgba(2, 132, 199, 0.15)',
+              color: currentRole === 'admin' ? 'var(--brand-primary)' : 'var(--status-info)',
+              padding: '2px 7px',
+              borderRadius: '6px',
+              border: `1px solid ${currentRole === 'admin' ? 'var(--brand-primary-border)' : 'rgba(2, 132, 199, 0.3)'}`
+            }}>
+              {roleLabels[currentRole]}
+            </span>
           </div>
         </div>
 
-        {/* Hostname Chip (as in AdminBolt image) */}
+        {/* Hostname Chip (matching AdminBolt / cPanel header) */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: '6px',
           background: 'rgba(148, 163, 184, 0.08)',
           border: '1px solid var(--glass-border)',
           borderRadius: '20px',
           padding: '4px 12px',
-          fontSize: '0.8rem'
+          fontSize: '0.78rem'
         }}>
-          <Server size={14} style={{ color: 'var(--text-muted)' }} />
+          <Server size={13} style={{ color: 'var(--text-muted)' }} />
           <span style={{ color: 'var(--text-muted)' }}>{t('hostnameLabel')}:</span>
           <span className="font-mono" style={{ fontWeight: 600, color: 'var(--text-main)' }}>
             panel.digihost.id
           </span>
         </div>
 
-        {/* View Shortcuts */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {currentRole === 'admin' ? (
-            <>
-              <button 
-                onClick={() => onViewChange('dashboard')}
-                className={`btn btn-sm ${activeView === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                <Activity size={14} />
-                {t('navDashboard')}
-              </button>
-              <button 
-                onClick={() => onViewChange('cluster')}
-                className={`btn btn-sm ${activeView === 'cluster' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                <Server size={14} />
-                {t('navCluster')}
-              </button>
-              <button 
-                onClick={() => onViewChange('billing')}
-                className={`btn btn-sm ${activeView === 'billing' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                <FileText size={14} />
-                {t('navBilling')}
-              </button>
-            </>
-          ) : (
-            <>
-              <button 
-                onClick={() => onViewChange('home')}
-                className={`btn btn-sm ${activeView === 'home' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                <Activity size={14} />
-                {t('navHome')}
-              </button>
-              <button 
-                onClick={() => onViewChange('tools')}
-                className={`btn btn-sm ${activeView === 'tools' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                <SlidersHorizontal size={14} />
-                {t('searchTools')}
-              </button>
-            </>
-          )}
-        </div>
+        {/* Quick View Navigation Tabs (Matching Image) */}
+        {currentRole === 'admin' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+            <button
+              onClick={() => onViewChange('dashboard')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: activeView === 'dashboard' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
+                background: activeView === 'dashboard' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
+                color: activeView === 'dashboard' ? '#ffffff' : 'var(--text-main)',
+                boxShadow: activeView === 'dashboard' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Activity size={14} />
+              <span>{t('navDashboard')}</span>
+            </button>
+
+            <button
+              onClick={() => onViewChange('cluster')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: activeView === 'cluster' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
+                background: activeView === 'cluster' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
+                color: activeView === 'cluster' ? '#ffffff' : 'var(--text-main)',
+                boxShadow: activeView === 'cluster' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Network size={14} />
+              <span>{t('navCluster')}</span>
+            </button>
+
+            <button
+              onClick={() => onViewChange('runtimes')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: activeView === 'runtimes' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
+                background: activeView === 'runtimes' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
+                color: activeView === 'runtimes' ? '#ffffff' : 'var(--text-main)',
+                boxShadow: activeView === 'runtimes' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Cpu size={14} />
+              <span>{t('navSoftware')}</span>
+            </button>
+
+            <button
+              onClick={() => onViewChange('billing')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: activeView === 'billing' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
+                background: activeView === 'billing' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
+                color: activeView === 'billing' ? '#ffffff' : 'var(--text-main)',
+                boxShadow: activeView === 'billing' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <FileText size={14} />
+              <span>{t('navBilling')}</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Center: Search Bar */}
-      <div style={{ flex: '0 1 380px', position: 'relative', margin: '0 20px' }}>
+      {/* Center: Global Search Bar */}
+      <div style={{ flex: '1', maxWidth: '300px', minWidth: '120px', position: 'relative', margin: '0 16px' }}>
         <Search 
-          size={16} 
+          size={15} 
           style={{ 
             position: 'absolute', 
             left: '12px', 
@@ -214,15 +263,15 @@ export const Header: React.FC<HeaderProps> = ({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t('searchPlaceholder')}
           className="input-glass"
-          style={{ paddingLeft: '38px', paddingRight: '48px', height: '38px' }}
+          style={{ paddingLeft: '36px', paddingRight: '36px', height: '36px', fontSize: '0.82rem' }}
         />
         <span style={{
           position: 'absolute',
           right: '10px',
           top: '50%',
           transform: 'translateY(-50%)',
-          fontSize: '0.7rem',
-          padding: '2px 6px',
+          fontSize: '0.68rem',
+          padding: '1px 5px',
           borderRadius: '4px',
           background: 'rgba(148, 163, 184, 0.15)',
           color: 'var(--text-muted)',
@@ -233,7 +282,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
         {/* Terminal Quick Button */}
         <button 
           onClick={onOpenTerminal}
@@ -241,7 +290,7 @@ export const Header: React.FC<HeaderProps> = ({
           title={t('navTerminal')}
           style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
         >
-          <span className="font-mono" style={{ fontSize: '0.8rem', fontWeight: 600 }}>&gt;_ SSH</span>
+          <span className="font-mono" style={{ fontSize: '0.78rem', fontWeight: 600 }}>&gt;_ SSH</span>
         </button>
 
         {/* Health Indicator Badge */}
@@ -352,16 +401,16 @@ export const Header: React.FC<HeaderProps> = ({
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('notifications')}</span>
-                <span className="badge-online">3 Active Services</span>
+                <span className="badge-online">{t('headerActiveServices')}</span>
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
                 <div style={{ padding: '8px 0', borderBottom: '1px solid var(--glass-border)' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>ACME SSL Auto-Renewed</div>
-                  <div>Issued Let's Encrypt wildcard cert for *.digipanel.live</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{t('notifSslRenewed')}</div>
+                  <div>{t('notifSslRenewedDetail')}</div>
                 </div>
                 <div style={{ padding: '8px 0' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Cluster Node Health</div>
-                  <div>All 3 fleet nodes responding with &lt; 5ms latency.</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{t('notifClusterHealth')}</div>
+                  <div>{t('notifClusterHealthDetail')}</div>
                 </div>
               </div>
             </div>
@@ -375,7 +424,7 @@ export const Header: React.FC<HeaderProps> = ({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
+              gap: '8px',
               padding: '4px 10px 4px 6px',
               borderRadius: '24px',
               background: 'var(--glass-surface)',
@@ -385,8 +434,8 @@ export const Header: React.FC<HeaderProps> = ({
             }}
           >
             <div style={{
-              width: '30px',
-              height: '30px',
+              width: '28px',
+              height: '28px',
               borderRadius: '50%',
               background: currentRole === 'admin' ? '#0f172a' : '#ea580c',
               color: '#ffffff',
@@ -394,16 +443,13 @@ export const Header: React.FC<HeaderProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               fontWeight: 700,
-              fontSize: '0.85rem'
+              fontSize: '0.8rem'
             }}>
               {currentRole === 'admin' ? 'A' : currentRole === 'reseller' ? 'R' : 'T'}
             </div>
             <div style={{ textAlign: 'left', lineHeight: 1.1 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>
-                {currentRole === 'admin' ? 'Root Admin' : currentRole === 'reseller' ? 'Reseller Pro' : 'testuser'}
-              </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                {roleLabels[currentRole]}
+              <div style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                {currentRole === 'admin' ? t('headerRootAdmin') : currentRole === 'reseller' ? t('headerResellerPro') : 'testuser'}
               </div>
             </div>
             <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
@@ -427,7 +473,7 @@ export const Header: React.FC<HeaderProps> = ({
                 color: 'var(--text-muted)', 
                 textTransform: 'uppercase' 
               }}>
-                Switch Persona
+                {t('headerSwitchPersona')}
               </div>
               <button 
                 onClick={() => { 
@@ -453,7 +499,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <ShieldCheck size={16} />
                 <div>
                   <div>{t('adminPanel')}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Server Fleet, WHM & Cluster</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('headerAdminDesc')}</div>
                 </div>
               </button>
               <button 
@@ -480,7 +526,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <User size={16} />
                 <div>
                   <div>{t('resellerPanel')}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sub-accounts & Quotas</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('headerResellerDesc')}</div>
                 </div>
               </button>
               <button 
@@ -507,7 +553,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Server size={16} />
                 <div>
                   <div>{t('clientPanel')}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>cPanel / Self-Service</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('headerUserDesc')}</div>
                 </div>
               </button>
             </div>

@@ -45,18 +45,18 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
     if (!domain || !username || !password) return;
 
     setIsSubmitting(true);
-    setStepStatus(['Allocating POSIX user & home directory...']);
+    setStepStatus([t('newAccStepUser')]);
 
     setTimeout(() => {
-      setStepStatus(prev => [...prev, 'Configuring Nginx vhost & PHP-FPM 8.3 pool...']);
+      setStepStatus(prev => [...prev, t('newAccStepVhost')]);
     }, 400);
 
     setTimeout(() => {
-      setStepStatus(prev => [...prev, 'Initializing MariaDB database & user grant...']);
+      setStepStatus(prev => [...prev, t('newAccStepDb')]);
     }, 800);
 
     setTimeout(() => {
-      setStepStatus(prev => [...prev, 'Issuing Let\'s Encrypt SSL certificate via ACME...']);
+      setStepStatus(prev => [...prev, t('newAccStepSsl')]);
     }, 1200);
 
     setTimeout(() => {
@@ -114,7 +114,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
                 {t('modalNewAccountTitle')}
               </h2>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Atomic account creation with automatic rollback and cgroups v2 quotas
+                {t('newAccSubtitle')}
               </div>
             </div>
           </div>
@@ -135,7 +135,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
               margin: '0 auto 20px auto'
             }} />
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '12px' }}>
-              Provisioning Account...
+              {t('newAccProvisioning')}
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '420px', margin: '0 auto', textAlign: 'left', fontSize: '0.82rem' }}>
               {stepStatus.map((step, idx) => (
@@ -150,13 +150,13 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                Primary Domain Name
+                {t('newAccDomainLabel')}
               </label>
               <div style={{ position: 'relative' }}>
                 <Globe size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type="text"
-                  placeholder="example.com"
+                  placeholder={t('newAccDomainPh')}
                   value={domain}
                   onChange={(e) => handleDomainChange(e.target.value)}
                   className="input-glass font-mono"
@@ -169,7 +169,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  Linux System Username
+                  {t('newAccUserLabel')}
                 </label>
                 <input 
                   type="text"
@@ -183,13 +183,13 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
 
               <div>
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  Account Password
+                  {t('newAccPasswordLabel')}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <Lock size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input 
                     type="password"
-                    placeholder="Argon2id secure password"
+                    placeholder={t('newAccPasswordPh')}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="input-glass"
@@ -203,7 +203,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  Package Plan
+                  {t('thPlan')}
                 </label>
                 <select 
                   value={plan} 
@@ -211,16 +211,16 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
                   className="input-glass"
                   style={{ height: '40px' }}
                 >
-                  <option value="Starter Cloud">Starter Cloud (5 GB Disk)</option>
-                  <option value="Standard Cloud">Standard Cloud (10 GB Disk)</option>
-                  <option value="Pro Developer">Pro Developer (25 GB Disk)</option>
-                  <option value="Enterprise Fleet">Enterprise Fleet (100 GB Disk)</option>
+                  <option value="Starter Cloud">{t('planStarter')}</option>
+                  <option value="Standard Cloud">{t('planStandard')}</option>
+                  <option value="Pro Developer">{t('planPro')}</option>
+                  <option value="Enterprise Fleet">{t('planEnterprise')}</option>
                 </select>
               </div>
 
               <div>
                 <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  PHP Version
+                  {t('newAccPhpLabel')}
                 </label>
                 <select 
                   value={phpVersion} 
@@ -228,7 +228,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
                   className="input-glass font-mono"
                   style={{ height: '40px' }}
                 >
-                  <option value="8.3">PHP 8.3 FPM (Recommended)</option>
+                  <option value="8.3">{t('newAccPhp83')}</option>
                   <option value="8.2">PHP 8.2 FPM</option>
                   <option value="8.1">PHP 8.1 FPM</option>
                 </select>

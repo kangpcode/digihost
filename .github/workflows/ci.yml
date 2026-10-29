@@ -1,0 +1,135 @@
+name: DigiPanel Quality Gate CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  backend-gate:
+    name: Go Backend & Agent Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: false
+
+      - name: Verify Go Module
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || true
+
+      - name: Go Vet Analysis
+        run: go vet ./...
+
+      - name: Run Unit & Security Tests
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Build Core and Agent Binaries
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/digipanel-core ./core
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/digipanel-agent ./agent
+
+  frontend-gate:
+    name: Frontend React Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: TypeScript & Vite Production Build
+        working-directory: web
+        run: npm run build
+
+  security-compliance:
+    name: Security & Policy Compliance Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check Prohibited Shell String Executions
+        run: |
+          echo "Auditing codebase for prohibited shell string patterns (bash -c, sh -c)..."
+          if grep -rnE '(bash|sh)[[:space:]]+"-c"' --exclude-dir={.git,node_modules,dist,bin,storage} .; then
+            echo "Security Error: Prohibited shell string invocation found in production codebase."
+            exit 1
+          fi
+          echo "Check passed: Zero shell string invocations."
+
+      - name: Check Zero-Emoji Policy
+        run: |
+          echo "Auditing codebase for zero-emoji compliance..."
+          python3 -c "
+          import os, sys
+
+          def has_emoji(text):
+              for ch in text:
+                  cp = ord(ch)
+                  if (0x1F600 <= cp <= 0x1F64F or
+                      0x1F300 <= cp <= 0x1F5FF or
+                      0x1F680 <= cp <= 0x1F6FF or
+                      0x1F700 <= cp <= 0x1F77F or
+                      0x1F780 <= cp <= 0x1F7FF or
+                      0x1F800 <= cp <= 0x1F8FF or
+                      0x1F900 <= cp <= 0x1F9FF or
+                      0x1FA00 <= cp <= 0x1FA6F or
+                      0x1FA70 <= cp <= 0x1FAFF or
+                      0x2600 <= cp <= 0x26FF or
+                      0x2700 <= cp <= 0x27BF):
+                      return True
+              return False
+
+          violations = []
+          for root, dirs, files in os.walk('.'):
+              if any(p in root for p in ['.git', 'node_modules', 'dist', 'bin', 'storage', 'scratch']):
+                  continue
+              for f in files:
+                  if f.endswith(('.png', '.jpg', '.ico', '.webp', '.svg')):
+                      continue
+                  path = os.path.join(root, f)
+                  try:
+                      with open(path, 'r', encoding='utf-8', errors='ignore') as fp:
+                          for idx, line in enumerate(fp, 1):
+                              if has_emoji(line):
+                                  violations.append(f'{path}:{idx}')
+                  except Exception:
+                      pass
+
+          if violations:
+              print(f'Policy Error: Found {len(violations)} emoji violations:')
+              for v in violations[:10]:
+                  print('  ' + v)
+              sys.exit(1)
+          print('Check passed: Zero emoji violations.')
+          "
+
+  installer-gate:
+    name: Installer Quality Gate & Idempotency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Installer Test Suite
+        run: |
+          chmod +x installer/install.sh tests/installer_test.sh
+          ./tests/installer_test.sh

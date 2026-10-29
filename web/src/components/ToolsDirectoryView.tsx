@@ -45,7 +45,7 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
   const toolSections = [
     {
       id: 'email',
-      title: 'Email',
+      title: t('catEmail'),
       icon: Mail,
       tools: [
         { name: t('toolEmailAccounts'), action: () => {} },
@@ -53,10 +53,10 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
         { name: t('toolEmailRouting'), action: () => {} },
         { name: t('toolAutoresponders'), action: () => {} },
         { name: t('toolDefaultAddress'), action: () => {} },
-        { name: 'Mailing Lists', action: () => {} },
+        { name: t('toolMailingLists'), action: () => {} },
         { name: t('toolTrackDelivery'), action: () => {} },
         { name: t('toolGlobalEmailFilters'), action: () => {} },
-        { name: 'Email Filters', action: () => {} },
+        { name: t('toolEmailFilters'), action: () => {} },
         { name: t('toolEmailDeliverability'), action: () => {} },
         { name: t('toolAddressImporter'), action: () => {} },
         { name: t('toolSpamFilters'), action: () => {} },
@@ -68,7 +68,7 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
     },
     {
       id: 'files',
-      title: 'Files',
+      title: t('catFiles'),
       icon: Folder,
       tools: [
         { name: t('toolFileManager'), action: onOpenFiles },
@@ -84,25 +84,25 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
     },
     {
       id: 'databases',
-      title: 'Databases',
+      title: t('catDatabases'),
       icon: Database,
       tools: [
         { name: t('toolPhpMyAdmin'), action: () => {} },
-        { name: 'MySQL Databases', action: () => {} },
-        { name: 'MySQL Database Wizard', action: () => {} },
-        { name: 'Remote MySQL', action: () => {} },
+        { name: t('toolMysqlDatabases'), action: () => {} },
+        { name: t('toolMysqlWizard'), action: () => {} },
+        { name: t('toolRemoteMysql'), action: () => {} },
         { name: t('toolPostgresManager'), action: () => {} },
-        { name: 'PostgreSQL Database Wizard', action: () => {} }
+        { name: t('toolPostgresWizard'), action: () => {} }
       ]
     },
     {
       id: 'domains',
-      title: 'Domains',
+      title: t('catDomains'),
       icon: Globe,
       tools: [
         { name: t('toolDomains'), action: onOpenDns },
-        { name: 'Subdomains', action: onOpenDns },
-        { name: 'Aliases', action: onOpenDns },
+        { name: t('toolSubdomains'), action: onOpenDns },
+        { name: t('toolAliases'), action: onOpenDns },
         { name: t('toolRedirects'), action: onOpenDns },
         { name: t('toolZoneEditor'), action: onOpenDns },
         { name: t('toolCloudflare'), action: onOpenDns },
@@ -111,53 +111,53 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
     },
     {
       id: 'metrics',
-      title: 'Metrics',
+      title: t('catMetrics'),
       icon: BarChart3,
       tools: [
-        { name: 'Visitors Log', action: () => {} },
-        { name: 'HTTP Errors', action: () => {} },
-        { name: 'Bandwidth Breakdown', action: () => {} },
-        { name: 'Raw Access Logs', action: onOpenTerminal },
-        { name: 'Awstats Web Analytics', action: () => {} },
-        { name: 'CPU and Concurrent Connection Usage', action: () => {} }
+        { name: t('toolVisitorsLog'), action: () => {} },
+        { name: t('toolHttpErrors'), action: () => {} },
+        { name: t('toolBandwidthBreakdown'), action: () => {} },
+        { name: t('toolRawAccessLogs'), action: onOpenTerminal },
+        { name: t('toolAwstatsAnalytics'), action: () => {} },
+        { name: t('toolCpuUsage'), action: () => {} }
       ]
     },
     {
       id: 'security',
-      title: 'Security',
+      title: t('catSecurity'),
       icon: Shield,
       tools: [
         { name: t('toolSshAccess'), action: onOpenTerminal },
         { name: t('toolIpBlocker'), action: () => {} },
         { name: t('toolSslCertificates'), action: onOpenDns },
-        { name: 'Manage API Tokens', action: () => {} },
-        { name: 'Hotlink Protection', action: () => {} },
+        { name: t('toolApiTokens'), action: () => {} },
+        { name: t('toolHotlinkProtection'), action: () => {} },
         { name: t('toolModSecurity'), action: () => {} },
         { name: t('toolTwoFactor'), action: () => {} }
       ]
     },
     {
       id: 'software',
-      title: 'Software',
+      title: t('catSoftware'),
       icon: Cpu,
       tools: [
-        { name: 'WordPress Toolkit', action: () => {} },
+        { name: t('toolWordPressToolkit'), action: () => {} },
         { name: t('toolPhpSelector'), action: () => {} },
         { name: t('toolNodeManager'), action: () => {} },
-        { name: 'Python App Setup', action: () => {} },
-        { name: 'Optimize Website (Gzip / Brotli)', action: () => {} }
+        { name: t('toolPythonAppSetup'), action: () => {} },
+        { name: t('toolOptimizeWebsite'), action: () => {} }
       ]
     },
     {
       id: 'advanced',
-      title: 'Advanced',
+      title: t('catAdvanced'),
       icon: Terminal,
       tools: [
         { name: t('navTerminal'), action: onOpenTerminal },
         { name: t('toolCronJobs'), action: () => {} },
-        { name: 'Track DNS Resolution', action: onOpenDns },
-        { name: 'Apache & Nginx Handlers', action: () => {} },
-        { name: 'MIME Types Configuration', action: () => {} }
+        { name: t('toolTrackDns'), action: onOpenDns },
+        { name: t('toolHandlers'), action: () => {} },
+        { name: t('toolMimeTypes'), action: () => {} }
       ]
     }
   ];
@@ -168,10 +168,10 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
-            Tools Directory
+            {t('toolsDirectoryTitle')}
           </h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Categorized index of all server capabilities, web software runtimes, and security modules
+            {t('toolsDirectorySubtitle')}
           </p>
         </div>
 
@@ -179,7 +179,7 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
           <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input 
             type="text"
-            placeholder="Filter tools..."
+            placeholder={t('toolsFilterPh')}
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             className="input-glass"

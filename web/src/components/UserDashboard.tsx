@@ -33,6 +33,10 @@ interface UserDashboardProps {
   selectedCategory?: string;
 }
 
+function createMsgId(): string {
+  return 'msg-' + Math.random().toString(36).slice(2, 9);
+}
+
 export const UserDashboard: React.FC<UserDashboardProps> = ({
   language,
   onOpenDnsEditor,
@@ -71,14 +75,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || chatInput;
     if (!text.trim()) return;
 
     const userMsg: AiChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: createMsgId(),
       sender: 'user',
-      timestamp: 'Just now',
+      timestamp: t('justNow'),
       content: text
     };
 
@@ -86,30 +90,47 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     if (!textToSend) setChatInput('');
     setIsTyping(true);
 
+    try {
+      const res = await fetch('/api/v1/ai/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: `msg-${Date.now() + 1}`,
+            sender: 'assistant',
+            timestamp: data.timestamp || t('justNow'),
+            content: data.answer,
+            suggestedAction: data.actionLabel ? { label: data.actionLabel, actionType: data.actionType } : undefined
+          }
+        ]);
+        setIsTyping(false);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+
     setTimeout(() => {
       let botResponse = '';
       let action: any = undefined;
 
       const lower = text.toLowerCase();
       if (lower.includes('ssl') || lower.includes('cert') || lower.includes('https')) {
-        botResponse = language === 'id' 
-          ? 'Sertifikat SSL Let\'s Encrypt aktif untuk testuser.digipanel.live. Auto-renewal dijadwalkan otomatis melalui ACME daemon setiap 60 hari.'
-          : 'Let\'s Encrypt SSL is active for testuser.digipanel.live. Auto-renewal is managed by the ACME daemon every 60 days with HTTP-01 verification.';
-        action = { label: 'Open DNS & SSL Manager', actionType: 'open_dns' };
+        botResponse = t('aiAnsSsl');
+        action = { label: t('aiOpenSslManager'), actionType: 'open_dns' };
       } else if (lower.includes('disk') || lower.includes('storage') || lower.includes('quota')) {
-        botResponse = language === 'id'
-          ? 'Kapasitas disk Anda saat ini 0.06 MB dari 50 MB kuota terpakai (0.1%). Tidak ada berkas log usang atau database berlebih yang perlu dibersihkan.'
-          : 'Your current disk allocation is 0.06 MB / 50 MB (0.1% utilized). Logs and database indexes are optimal.';
-        action = { label: 'Open File Manager', actionType: 'open_files' };
+        botResponse = t('aiAnsDisk');
+        action = { label: t('aiOpenFileManager'), actionType: 'open_files' };
       } else if (lower.includes('dns') || lower.includes('cloudflare')) {
-        botResponse = language === 'id'
-          ? 'Zona DNS dikelola oleh PowerDNS engine. A record mengarah ke 103.189.201.42. Anda dapat menambah A, CNAME, atau MX record langsung.'
-          : 'DNS zone is managed by the PowerDNS cluster. Apex A record resolves to 103.189.201.42. You can manage CNAME, MX, and TXT records anytime.';
-        action = { label: 'Launch Zone Editor', actionType: 'open_dns' };
+        botResponse = t('aiAnsDns');
+        action = { label: t('aiLaunchZoneEditor'), actionType: 'open_dns' };
       } else {
-        botResponse = language === 'id'
-          ? 'Perintah diterima. Sistem DigiPanel memverifikasi lingkungan PHP 8.3 FPM, MariaDB 10.11, dan isolasi cgroups v2 beroperasi normal.'
-          : 'Query processed. DigiPanel verifies PHP 8.3 FPM runtime, MariaDB 10.11, and cgroups v2 process isolation are operating nominally.';
+        botResponse = t('aiAnsDefault');
       }
 
       setChatMessages(prev => [
@@ -117,7 +138,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         {
           id: `msg-${Date.now() + 1}`,
           sender: 'assistant',
-          timestamp: 'Just now',
+          timestamp: t('justNow'),
           content: botResponse,
           suggestedAction: action
         }
@@ -278,7 +299,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               ))}
               {isTyping && (
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                  DigiPanel assistant is typing...
+                  DigiPanel assistant: {t('aiTyping')}
                 </div>
               )}
             </div>
@@ -410,12 +431,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 gap: '14px'
               }}>
                 {[
-                  { title: 'WordPress Toolkit', icon: Layers },
-                  { title: 'Install WordPress 6.6', icon: Sparkles },
-                  { title: 'Staging Environment', icon: HardDrive },
-                  { title: 'Security Hardening', icon: ShieldCheck },
-                  { title: 'Plugin Manager', icon: Layers },
-                  { title: 'Clone & Migration', icon: ExternalLink }
+                  { title: t('toolWordPressToolkit'), icon: Layers },
+                  { title: t('wpInstall'), icon: Sparkles },
+                  { title: t('wpStaging'), icon: HardDrive },
+                  { title: t('wpHardening'), icon: ShieldCheck },
+                  { title: t('wpPluginManager'), icon: Layers },
+                  { title: t('wpCloneMigration'), icon: ExternalLink }
                 ].map((tool, idx) => (
                   <div
                     key={idx}

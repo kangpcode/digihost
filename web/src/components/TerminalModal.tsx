@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Language } from '../types';
+import { getTranslation } from '../i18n/translations';
 
 interface TerminalModalProps {
   isOpen: boolean;
@@ -13,76 +14,46 @@ interface TerminalModalProps {
 
 export const TerminalModal: React.FC<TerminalModalProps> = ({
   isOpen,
-  onClose
+  onClose,
+  language
 }) => {
+  const t = (key: any) => getTranslation(language, key);
 
   const [inputCommand, setInputCommand] = useState('');
   const [history, setHistory] = useState<Array<{ cmd?: string; output: string }>>([
     {
-      output: `DigiPanel Linux Kernel 6.8.0-45-generic (x86_64)
-Connected to panel.digihost.id (103.189.201.42)
-Type 'help' for available diagnostic commands.`
+      output: t('terminalBanner')
     }
   ]);
 
   if (!isOpen) return null;
 
-  const handleRunCommand = (e: React.FormEvent) => {
+  const handleRunCommand = async (e: React.FormEvent) => {
     e.preventDefault();
     const cmd = inputCommand.trim();
     if (!cmd) return;
 
-    let output = '';
-    const lower = cmd.toLowerCase();
-
-    if (lower === 'help') {
-      output = `Available Commands:
-  digipanel status  - Display platform daemons and socket health
-  uptime            - Show server uptime and system load
-  df -h             - Show disk storage allocation
-  free -m           - Show RAM usage
-  nginx -t          - Validate web server configuration
-  certbot certs     - List managed Let's Encrypt certificates
-  clear             - Clear terminal buffer`;
-    } else if (lower === 'digipanel status') {
-      output = `● digipanel-agent.service - DigiPanel Root Agent
-     Loaded: loaded (/etc/systemd/system/digipanel-agent.service; enabled)
-     Active: active (running) since Thu 2026-10-24 04:12:00 UTC
-     Socket: /run/digipanel/agent.sock (0660 root:digipanel)
-     Memory: 18.4M (limit: 128M)
-     CGroup: /system.slice/digipanel-agent.service
-             └─3108 /usr/local/bin/digipanel-agent daemon`;
-    } else if (lower === 'uptime') {
-      output = ` 13:30:12 up 42 days,  6:18,  1 user,  load average: 0.12, 0.08, 0.05`;
-    } else if (lower === 'df -h') {
-      output = `Filesystem      Size  Used Avail Use% Mounted on
-/dev/nvme0n1p2  500G   28G  448G   6% /
-tmpfs            16G     0   16G   0% /dev/shm
-/dev/nvme0n1p1  512M  6.2M  506M   2% /boot/efi`;
-    } else if (lower === 'free -m') {
-      output = `               total        used        free      shared  buff/cache   available
-Mem:           16384        1842        9812         124        4730       14418
-Swap:           4096           0        4096`;
-    } else if (lower === 'nginx -t') {
-      output = `nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-nginx: configuration file /etc/nginx/nginx.conf test is successful`;
-    } else if (lower === 'certbot certs') {
-      output = `Found the following certs:
-  Certificate Name: digipanel.live
-    Serial Number: 4a2b9e81...
-    Key Type: ECDSA
-    Domains: digipanel.live *.digipanel.live
-    Expiry Date: 2026-12-28 10:14:00+00:00 (VALID: 60 days)
-    Certificate Path: /etc/letsencrypt/live/digipanel.live/fullchain.pem`;
-    } else if (lower === 'clear') {
+    if (cmd.toLowerCase() === 'clear') {
       setHistory([]);
       setInputCommand('');
       return;
-    } else {
-      output = `bash: ${cmd}: command not recognized in restricted diagnostic shell. Type 'help'.`;
     }
 
-    setHistory([...history, { cmd, output }]);
+    try {
+      const res = await fetch('/api/v1/terminal/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(prev => [...prev, { cmd, output: data.output || t('terminalOk') }]);
+      } else {
+        setHistory(prev => [...prev, { cmd, output: t('terminalHttpError') }]);
+      }
+    } catch {
+      setHistory(prev => [...prev, { cmd, output: t('terminalConnError') }]);
+    }
     setInputCommand('');
   };
 
@@ -146,7 +117,7 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful`;
               type="text"
               value={inputCommand}
               onChange={(e) => setInputCommand(e.target.value)}
-              placeholder="type 'help' or any command..."
+              placeholder={t('terminalPlaceholder')}
               className="font-mono"
               autoFocus
               style={{

@@ -1,0 +1,21 @@
+{
+  "name": "ssl",
+  "version": "1.0.0",
+  "title": "SSL/TLS & ACME Engine",
+  "description": "Automated Let's Encrypt / ACME certificate issuance via HTTP-01 and DNS-01, wildcard support, and AutoSSL.",
+  "permissions": [
+    "ssl.read",
+    "ssl.issue",
+    "ssl.renew",
+    "ssl.install"
+  ],
+  "hooks": [
+    "domain.created",
+    "domain.renewed",
+    "ssl.expired"
+  ],
+  "menu": {
+    "section": "security",
+    "priority": 70
+  }
+}

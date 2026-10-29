@@ -1,0 +1,21 @@
+{
+  "name": "backup",
+  "version": "1.0.0",
+  "title": "Encrypted Incremental Backup",
+  "description": "Full and incremental snapshot engine, S3 / SFTP remote storage, recovery tests, and per-account restore.",
+  "permissions": [
+    "backup.read",
+    "backup.create",
+    "backup.restore",
+    "backup.schedule"
+  ],
+  "hooks": [
+    "backup.completed",
+    "backup.failed",
+    "backup.restored"
+  ],
+  "menu": {
+    "section": "files",
+    "priority": 80
+  }
+}

@@ -108,7 +108,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     },
     {
+      id: 'runtimes',
+      label: 'Runtimes & Apps',
+      icon: Cpu,
+      items: [
+        { id: 'runtimes', label: 'Node, Python, Go, PHP', icon: Cpu },
+      ]
+    },
+    {
       id: 'billing',
+      label: t('navBilling'),
+      icon: FileText,
+      items: [
+        { id: 'billing', label: t('navBilling'), icon: FileText },
+      ]
+    }
+  ];
+
+  const resellerMenuGroups = [
+    {
+      id: 'reseller_home',
+      label: t('navHome'),
+      icon: Home,
+      items: [
+        { id: 'dashboard', label: t('navDashboard'), icon: Activity },
+      ]
+    },
+    {
+      id: 'reseller_accounts',
+      label: t('resellerClientAccounts'),
+      icon: Users,
+      items: [
+        { id: 'accounts_list', label: t('actionAllAccounts'), icon: Users },
+      ]
+    },
+    {
+      id: 'reseller_services',
+      label: t('navHostingServices'),
+      icon: Layers,
+      items: [
+        { id: 'dns', label: t('modalDnsEditorTitle'), icon: Globe },
+        { id: 'ssl', label: t('sslManagerTitle'), icon: Shield },
+        { id: 'mail', label: t('mailManagerTitle'), icon: Mail },
+      ]
+    },
+    {
+      id: 'reseller_billing',
       label: t('navBilling'),
       icon: FileText,
       items: [
@@ -125,6 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'databases', label: t('navDatabases'), icon: Database, category: 'databases' },
     { id: 'emails', label: t('navEmails'), icon: Mail, category: 'emails' },
     { id: 'mailing_lists', label: t('navMailingLists'), icon: ListFilter, category: 'emails' },
+    { id: 'runtimes', label: 'Node, Python, Go, PHP', icon: Cpu, category: 'software' },
     { id: 'metrics', label: t('navMetrics'), icon: BarChart3, category: 'metrics' },
     { id: 'security', label: t('navSecurity'), icon: Shield, category: 'security' },
     { id: 'software', label: t('navSoftware'), icon: Cpu, category: 'software' },
@@ -176,10 +222,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation Content */}
       <div style={{ flex: 1, padding: '0 8px 16px 8px' }}>
-        {currentRole === 'admin' ? (
-          // Admin Panel Menu
+        {currentRole === 'admin' || currentRole === 'reseller' ? (
+          // Admin & Reseller Multi-Tenant Menu
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {adminMenuGroups.map(group => {
+            {(currentRole === 'admin' ? adminMenuGroups : resellerMenuGroups).map(group => {
               const matchesSearch = sidebarSearch === '' || 
                 group.label.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
                 group.items.some(item => item.label.toLowerCase().includes(sidebarSearch.toLowerCase()));

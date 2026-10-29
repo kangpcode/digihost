@@ -125,12 +125,12 @@ export const ClusterFleetDashboard: React.FC<ClusterFleetDashboardProps> = ({
         </div>
         <div>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '2px' }}>
-            Overall Health
+            {t('fleetOverallHealth')}
           </h3>
           <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-            System status: <span style={{ fontWeight: 600, color: 'var(--status-online)' }}>Healthy</span>
+            {t('systemStatusLabel')} <span style={{ fontWeight: 600, color: 'var(--status-online)' }}>{t('healthy')}</span>
             <span style={{ margin: '0 8px', color: 'var(--glass-border)' }}>|</span>
-            {onlineServers} online, 0 degraded, 0 offline
+            {onlineServers} {t('fleetOnlineSummary')}
           </div>
         </div>
       </div>
@@ -366,12 +366,12 @@ export const ClusterFleetDashboard: React.FC<ClusterFleetDashboardProps> = ({
               Fleet Infrastructure Matrix
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Per-node live resource telemetry, service health checks, and inventory
+              {t('fleetSubtitle')}
             </p>
           </div>
           <button onClick={onOpenTerminal} className="btn btn-secondary btn-sm">
             <Terminal size={14} />
-            <span>Fleet Terminal</span>
+            <span>{t('fleetTerminalBtn')}</span>
           </button>
         </div>
 
@@ -473,7 +473,7 @@ export const ClusterFleetDashboard: React.FC<ClusterFleetDashboardProps> = ({
                       style={{ padding: '5px 10px', fontSize: '0.75rem' }}
                     >
                       <ExternalLink size={12} />
-                      <span>Node Login</span>
+                      <span>{t('fleetNodeLogin')}</span>
                     </button>
                   </td>
                 </tr>

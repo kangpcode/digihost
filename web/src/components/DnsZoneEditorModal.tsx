@@ -19,15 +19,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
 }) => {
   const t = (key: any) => getTranslation(language, key);
 
-  const [records, setRecords] = useState<DnsRecord[]>([
-    { id: 'rec-1', domain: 'digipanel.live', type: 'A', name: '@', content: '103.189.201.42', ttl: 300 },
-    { id: 'rec-2', domain: 'digipanel.live', type: 'A', name: 'panel', content: '103.189.201.42', ttl: 300 },
-    { id: 'rec-3', domain: 'digipanel.live', type: 'CNAME', name: 'www', content: 'digipanel.live', ttl: 3600 },
-    { id: 'rec-4', domain: 'digipanel.live', type: 'MX', name: '@', content: 'mail.digipanel.live', ttl: 3600, priority: 10 },
-    { id: 'rec-5', domain: 'digipanel.live', type: 'TXT', name: '@', content: 'v=spf1 a mx ip4:103.189.201.42 ~all', ttl: 3600 },
-    { id: 'rec-6', domain: 'digipanel.live', type: 'TXT', name: '_dmarc', content: 'v=DMARC1; p=quarantine; rua=mailto:dmarc@digipanel.live', ttl: 3600 }
-  ]);
-
+  const [records, setRecords] = useState<DnsRecord[]>([]);
   const [newType, setNewType] = useState<'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT'>('A');
   const [newName, setNewName] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -35,33 +27,68 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
   const [newPriority] = useState(10);
   const [statusMessage, setStatusMessage] = useState('');
 
+  const fetchDns = async () => {
+    try {
+      const res = await fetch('/api/v1/dns/records');
+      if (res.ok) {
+        const data = await res.json();
+        setRecords(data);
+      }
+    } catch {
+      // fallback
+    }
+  };
+
+  React.useEffect(() => {
+    if (isOpen) {
+      fetchDns();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleAddRecord = (e: React.FormEvent) => {
+  const handleAddRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newContent) return;
 
-    const newRecord: DnsRecord = {
-      id: `rec-${Date.now()}`,
-      domain: 'digipanel.live',
-      type: newType,
-      name: newName,
-      content: newContent,
-      ttl: newTtl,
-      priority: newType === 'MX' ? newPriority : undefined
-    };
-
-    setRecords([...records, newRecord]);
-    setNewName('');
-    setNewContent('');
-    setStatusMessage('DNS record synced successfully to PowerDNS cluster.');
-    setTimeout(() => setStatusMessage(''), 3000);
+    try {
+      const res = await fetch('/api/v1/dns/records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain: 'digipanel.live',
+          type: newType,
+          name: newName,
+          content: newContent,
+          ttl: newTtl,
+          priority: newType === 'MX' ? newPriority : undefined
+        })
+      });
+      if (res.ok) {
+        setNewName('');
+        setNewContent('');
+        setStatusMessage(t('dnsRecordSynced'));
+        fetchDns();
+        setTimeout(() => setStatusMessage(''), 3000);
+      }
+    } catch {
+      setStatusMessage(t('dnsRecordError'));
+    }
   };
 
-  const handleDeleteRecord = (id: string) => {
-    setRecords(records.filter(r => r.id !== id));
-    setStatusMessage('Record removed and DNS serial incremented.');
-    setTimeout(() => setStatusMessage(''), 3000);
+  const handleDeleteRecord = async (id: string) => {
+    try {
+      const res = await fetch(`/api/v1/dns/records?id=${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setStatusMessage(t('dnsRecordDeleted'));
+        fetchDns();
+        setTimeout(() => setStatusMessage(''), 3000);
+      }
+    } catch {
+      // fallback
+    }
   };
 
   return (
@@ -91,7 +118,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
                 {t('modalDnsEditorTitle')}
               </h2>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                PowerDNS Zone: <span className="font-mono" style={{ fontWeight: 600 }}>digipanel.live</span> &bull; DNSSEC Enabled
+                PowerDNS {t('dnsZoneLabel')}: <span className="font-mono" style={{ fontWeight: 600 }}>digipanel.live</span> &bull; {t('dnsDnssecEnabled')}
               </div>
             </div>
           </div>
@@ -128,7 +155,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
           marginBottom: '20px'
         }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '12px' }}>
-            Add New Record
+            {t('dnsAddRecordTitle')}
           </div>
           <div style={{
             display: 'grid',
@@ -137,7 +164,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
             alignItems: 'end'
           }}>
             <div>
-              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Type</label>
+              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>{t('dnsLabelType')}</label>
               <select 
                 value={newType} 
                 onChange={(e: any) => setNewType(e.target.value)}
@@ -152,10 +179,10 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Name</label>
+              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>{t('dnsLabelName')}</label>
               <input 
                 type="text"
-                placeholder="@, sub, www"
+                placeholder={t('dnsPlaceholderName')}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 className="input-glass"
@@ -164,10 +191,10 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
               />
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Content</label>
+              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>{t('dnsLabelContent')}</label>
               <input 
                 type="text"
-                placeholder="Target IP or hostname"
+                placeholder={t('dnsPlaceholderContent')}
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 className="input-glass"
@@ -176,7 +203,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
               />
             </div>
             <div>
-              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>TTL (s)</label>
+              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>{t('dnsLabelTtl')}</label>
               <input 
                 type="number"
                 value={newTtl}
@@ -187,7 +214,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
             </div>
             <button type="submit" className="btn btn-primary btn-sm" style={{ height: '36px' }}>
               <Plus size={14} />
-              <span>Add</span>
+              <span>{t('create')}</span>
             </button>
           </div>
         </form>
@@ -197,11 +224,11 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
           <table className="glass-table">
             <thead>
               <tr>
-                <th style={{ width: '80px' }}>TYPE</th>
-                <th>NAME</th>
-                <th>CONTENT</th>
-                <th style={{ width: '80px' }}>TTL</th>
-                <th style={{ width: '60px', textAlign: 'right' }}>ACTION</th>
+                <th style={{ width: '80px' }}>{t('dnsLabelType')}</th>
+                <th>{t('dnsLabelName')}</th>
+                <th>{t('dnsLabelContent')}</th>
+                <th style={{ width: '80px' }}>{t('dnsThTtl')}</th>
+                <th style={{ width: '60px', textAlign: 'right' }}>{t('thActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -223,7 +250,7 @@ export const DnsZoneEditorModal: React.FC<DnsZoneEditorModalProps> = ({
                       onClick={() => handleDeleteRecord(rec.id)}
                       className="btn-icon"
                       style={{ color: 'var(--status-danger)' }}
-                      title="Delete record"
+                      title={t('delete')}
                     >
                       <Trash2 size={14} />
                     </button>

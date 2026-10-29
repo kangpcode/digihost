@@ -1,0 +1,21 @@
+{
+  "name": "softinstaller",
+  "version": "1.0.0",
+  "title": "Application Marketplace & WordPress Toolkit",
+  "description": "One-click application installer, WordPress security manager, staging, cloning, and vulnerability scanner.",
+  "permissions": [
+    "apps.install",
+    "apps.manage",
+    "apps.clone",
+    "apps.backup"
+  ],
+  "hooks": [
+    "app.installed",
+    "app.updated",
+    "app.uninstalled"
+  ],
+  "menu": {
+    "section": "software",
+    "priority": 110
+  }
+}

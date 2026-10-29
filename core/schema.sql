@@ -1,11 +1,11 @@
--- DigiPanel Core Database Schema (PostgreSQL)
--- Adheres to: Integer currencies, hash-chained audit logging, Row-Level Security (RLS)
--- Version: 1.0.0
+-- DigiPanel Core Database Schema (PostgreSQL 16+)
+-- Version: 1.0.0 (Tahap 0 Fondasi)
+-- Principles: Integer currencies, hash-chained audit logging, Row-Level Security (RLS)
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Tenants (Multi-tenant SaaS Isolation)
+-- 1. Tenants (Multi-Tenant SaaS Isolation)
 CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug VARCHAR(64) UNIQUE NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE tenants (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Users & Authentication (Argon2id hashes)
+-- 2. Users and Authentication (Argon2id hashes)
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -34,7 +34,17 @@ CREATE TABLE users (
     CONSTRAINT uq_tenant_email UNIQUE (tenant_id, email)
 );
 
--- Immutable Append-Only Audit Log with Cryptographic Hash Chaining
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    ip_address INET NOT NULL,
+    user_agent TEXT,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Append-Only Cryptographically Chained Audit Log
 CREATE TABLE audit_logs (
     id BIGSERIAL PRIMARY KEY,
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -49,30 +59,94 @@ CREATE TABLE audit_logs (
     entry_hash VARCHAR(64) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX idx_audit_logs_actor ON audit_logs(actor_user_id);
+CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
 
--- Hosting Accounts
+-- 4. Hosting Packages (Plans)
+CREATE TABLE hosting_packages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(64) NOT NULL,
+    disk_limit_bytes BIGINT NOT NULL,
+    bandwidth_limit_bytes BIGINT NOT NULL,
+    inodes_limit INT NOT NULL DEFAULT 100000,
+    max_domains INT NOT NULL DEFAULT 1,
+    max_subdomains INT NOT NULL DEFAULT 10,
+    max_databases INT NOT NULL DEFAULT 5,
+    max_ftp_accounts INT NOT NULL DEFAULT 5,
+    max_email_accounts INT NOT NULL DEFAULT 10,
+    default_php_version VARCHAR(16) NOT NULL DEFAULT '8.3',
+    features_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tenant_package_name UNIQUE (tenant_id, name)
+);
+
+-- 5. Hosting Accounts
 CREATE TABLE hosting_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     owner_user_id UUID REFERENCES users(id) ON DELETE RESTRICT,
     reseller_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    package_id UUID REFERENCES hosting_packages(id) ON DELETE RESTRICT,
     username VARCHAR(32) UNIQUE NOT NULL,
+    posix_uid INT UNIQUE NOT NULL,
+    posix_gid INT NOT NULL,
     primary_domain VARCHAR(255) NOT NULL,
-    package_plan VARCHAR(64) NOT NULL,
+    document_root VARCHAR(512) NOT NULL,
     php_version VARCHAR(16) NOT NULL DEFAULT '8.3',
-    disk_limit_bytes BIGINT NOT NULL DEFAULT 52428800, -- 50MB
+    disk_limit_bytes BIGINT NOT NULL,
     disk_used_bytes BIGINT NOT NULL DEFAULT 0,
-    bandwidth_limit_bytes BIGINT NOT NULL DEFAULT 53687091200, -- 50GB
+    bandwidth_limit_bytes BIGINT NOT NULL,
     bandwidth_used_bytes BIGINT NOT NULL DEFAULT 0,
-    inodes_limit INT NOT NULL DEFAULT 100000,
+    inodes_limit INT NOT NULL,
     inodes_used INT NOT NULL DEFAULT 0,
+    cgroups_path VARCHAR(255) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'terminated')),
     ip_address INET NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Native Double-Entry General Ledger (Amounts strictly in smallest currency unit / cents)
+-- 6. Domains and DNS
+CREATE TABLE domain_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    account_id UUID REFERENCES hosting_accounts(id) ON DELETE CASCADE,
+    domain_name VARCHAR(255) UNIQUE NOT NULL,
+    domain_type VARCHAR(32) NOT NULL CHECK (domain_type IN ('primary', 'addon', 'subdomain', 'alias')),
+    document_root VARCHAR(512) NOT NULL,
+    php_version VARCHAR(16) NOT NULL,
+    ssl_enabled BOOLEAN NOT NULL DEFAULT false,
+    ssl_provider VARCHAR(32) DEFAULT 'letsencrypt',
+    ssl_auto_renew BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE dns_zones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    account_id UUID REFERENCES hosting_accounts(id) ON DELETE CASCADE,
+    origin VARCHAR(255) UNIQUE NOT NULL,
+    ttl INT NOT NULL DEFAULT 3600,
+    dnssec_enabled BOOLEAN NOT NULL DEFAULT false,
+    serial BIGINT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE dns_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    zone_id UUID REFERENCES dns_zones(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(16) NOT NULL CHECK (type IN ('A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'NS', 'CAA', 'PTR')),
+    content TEXT NOT NULL,
+    ttl INT NOT NULL DEFAULT 3600,
+    priority INT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. Double-Entry General Ledger (Amounts stored strictly in smallest currency unit / cents)
 CREATE TABLE ledger_accounts (
     code VARCHAR(32) PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
@@ -86,7 +160,8 @@ INSERT INTO ledger_accounts (code, name, type) VALUES
 ('1200-ACCOUNTS-RECEIVABLE', 'Accounts Receivable Client Invoices', 'asset'),
 ('2010-ACCOUNTS-PAYABLE', 'Accounts Payable Upstream Infrastructure', 'liability'),
 ('4010-REVENUE-HOSTING-PLANS', 'Hosting Services Recurring Revenue', 'revenue'),
-('4020-REVENUE-DOMAINS', 'Domain Registration and Renewals', 'revenue');
+('4020-REVENUE-DOMAINS', 'Domain Registration and Renewals', 'revenue')
+ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE ledger_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -105,7 +180,7 @@ CREATE TABLE ledger_entries (
     currency VARCHAR(8) NOT NULL DEFAULT 'IDR'
 );
 
--- Billing Invoices
+-- 8. Billing Invoices
 CREATE TABLE billing_invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -122,7 +197,7 @@ CREATE TABLE billing_invoices (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Cluster Fleet Nodes
+-- 9. Cluster Nodes
 CREATE TABLE cluster_nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -134,4 +209,16 @@ CREATE TABLE cluster_nodes (
     mtls_cert_fingerprint VARCHAR(64) NOT NULL,
     last_poll_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 10. System Modules Registry
+CREATE TABLE system_modules (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    version VARCHAR(32) NOT NULL,
+    is_core BOOLEAN NOT NULL DEFAULT false,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    manifest_json JSONB NOT NULL,
+    installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

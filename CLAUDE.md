@@ -239,3 +239,91 @@ Kerjakan berurutan. Tiap tahap hanya selesai bila seluruh gerbangnya lulus denga
 Setiap akhir tahap, keluarkan laporan dengan urutan: ringkasan hasil, daftar berkas, perintah uji dan keluarannya, checklist gerbang (centang dengan bukti), temuan audit mandiri, risiko tersisa, keputusan yang menunggu persetujuan manusia.
 
 Perintah mulai untuk agen: "Mulai dari Tahap 0. Sebelum menulis kode, tampilkan rencana arsitektur, model ancaman, skema database inti, dan daftar pertanyaan terbuka. Tunggu persetujuan, lalu kerjakan Tahap 0 hingga seluruh gerbang kualitas lulus. Jangan lanjut ke tahap berikutnya tanpa saya menyatakan lanjut."
+
+## 17. Benchmark kompetitor (data per Oktober 2026)
+
+Temuan di bawah berasal dari halaman publik yang dibuka saat penyusunan; sebagian berasal dari blog pihak ketiga sehingga agen wajib memverifikasi ulang ke advisori resmi sebelum menjadikannya dasar keputusan. Informasi aaPanel dan AdminBolt tidak berhasil diverifikasi dan harus diuji langsung (lihat bagian 19).
+
+| Kompetitor | Kelemahan yang terdokumentasi | Respons wajib DigiPanel |
+| --- | --- | --- |
+| cPanel/WHM | Lisensi per akun sejak 2019 sehingga biaya naik mengikuti jumlah akun ([ulasan](https://blog.unlimitedwebhosting.co.uk/directadmin-vs-cpanel-which-control-panel-should-you-use/)); CloudLinux dan Imunify360 berbayar tambahan ([daftar harga](https://www.snel.com/pricelist-2026/)); dilaporkan celah bypass autentikasi kritis CVE-2026-41940 (CVSS 9.8) dan tiga CVE lanjutan pada Mei 2026 ([laporan](https://the-coders-blog.pages.dev/cpanel-vulnerabilities-and-patching-2026/)) | Lisensi per server tanpa biaya per akun; isolasi cgroups dan pemindai malware bawaan; autentikasi default-tolak pada seluruh rute |
+| Plesk | Harga naik berkala dan kuat di WordPress tetapi lebih berat dari DirectAdmin ([perbandingan](https://www.hostmycode.com/blog/best-hosting-control-panels-2026-cpanel-plesk-directadmin-complete-comparison)) | WordPress Toolkit bawaan, konsumsi sumber daya lebih rendah dari Plesk pada uji yang sama |
+| DirectAdmin | Antarmuka dinilai kuno, tugas umum tersembunyi di bagian berlabel samar, pencarian menu kurang efektif ([ulasan](https://www.ispmanager.com/blog/cpanel-vs-directadmin-2026)); fitur keamanan dasar | Pencarian menu global instan (sudah di gambar referensi), navigasi berbasis tugas, keamanan lengkap bawaan |
+| CyberPanel | Eksekusi perintah jarak jauh tanpa autentikasi lewat karakter meta shell, dieksploitasi ransomware PSAUX ([SOCRadar](https://socradar.io/over-22000-cyberpanel-servers-at-risk-from-critical-vulnerabilities-exploitation-by-psaux-ransomware/)); middleware keamanan hanya memeriksa metode POST; celah autentikasi pada endpoint AI Scanner ([daftar CVE](https://feedly.com/cve/vendors/cyberpanel)) | Tidak ada eksekusi shell string sama sekali; middleware berlaku untuk semua metode HTTP; endpoint webhook wajib bertanda tangan |
+| HestiaCP | CVE-2026-43633 deserialisasi pada terminal web menjadi RCE root akibat format sesi PHP dan Node.js tidak sama ([VulnCheck](https://www.vulncheck.com/advisories/hestiacp-deserialization-rce-via-web-terminal)); CVE-2026-43634 spoofing IP lewat header CF-Connecting-IP; eskalasi lewat cron dan injeksi perintah lewat tipe record DNS ([daftar](https://intel.controlassurance.com/products/hestiacp/index.html)) | Satu implementasi sesi, header proxy hanya dipercaya dari daftar proxy tepercaya, cron dan DNS lewat enum tertutup |
+| aaPanel dan AdminBolt | Tidak terverifikasi pada penelusuran ini | Uji langsung pada VM bersih sesuai syarat lisensi masing-masing sebelum diklaim |
+| WHMCS | Harga naik menurut jumlah klien, kode inti terenkripsi ionCube sehingga tidak dapat diaudit pengguna ([Blesta](https://blesta.com/blesta-vs-whmcs/)), ekosistem pasar plugin terbesar | Klien tak terbatas, kode terbuka bagi operator, importir data dari WHMCS dan Blesta |
+| Blesta | Terbuka, klien tak terbatas, ada Import Manager; ekosistem lebih kecil dari WHMCS ([Blesta](https://blesta.com/blesta-vs-whmcs/)) | Tolok ukur fungsi minimum; tambahkan provisioning panel bawaan yang tidak butuh modul pihak ketiga |
+| FOSSBilling | Gratis tetapi masih beta (seri 0.7.x), fitur lebih terbatas, operator menanggung seluruh tambalan keamanan ([ulasan](https://payrequest.io/en/blog/open-source-whmcs-alternative-2026)) | Rilis stabil bertanda tangan, kanal tambalan keamanan resmi dan pembaruan otomatis |
+
+Pola yang berulang: kelemahan terparah kompetitor adalah keamanan antarmuka admin dan model lisensi, bukan jumlah fitur. Maka keunggulan DigiPanel dirancang di dua sumbu itu lebih dulu.
+
+## 18. Kontrol keamanan wajib hasil pelajaran kompetitor
+
+Tiap kelas celah di atas menjadi aturan desain dan uji regresi permanen. Pelanggaran satu aturan berarti rilis diblokir.
+
+1. Tidak ada eksekusi shell dari string. Semua perintah sistem dipanggil dengan array argumen, tanpa interpreter shell, dan hanya dari daftar putih agen. Uji fuzz dengan korpus karakter meta di setiap parameter.
+2. Autentikasi default-tolak di tingkat router untuk semua metode HTTP (GET, POST, PUT, DELETE, OPTIONS, HEAD). Rute publik harus didaftarkan eksplisit dan ditinjau; uji otomatis menelusuri seluruh rute dan gagal bila ada rute tanpa pelindung.
+3. Satu pustaka sesi dan serialisasi untuk seluruh komponen. Dilarang deserialisasi objek dari data tidak tepercaya; hanya format data murni (JSON) dengan skema.
+4. Terminal web: hanya untuk pengguna terautentikasi, berjalan sebagai pengguna akun (bukan root) di dalam namespace terisolasi, dengan batas waktu dan perekaman audit.
+5. Header identitas klien (X-Forwarded-For, CF-Connecting-IP) hanya dipercaya bila koneksi berasal dari proxy tepercaya yang terdaftar; pembatasan laju dan penguncian akun memakai IP hasil validasi itu.
+6. Cron, DNS, dan input bertipe tertutup memakai enum dan validasi skema; tidak ada sudo tanpa kata sandi untuk skrip yang dapat dimodifikasi pengguna. Agen memverifikasi kepemilikan dan jalur sebelum bertindak.
+7. Endpoint webhook, callback, dan layanan internal (termasuk fitur AI) wajib autentikasi dan tanda tangan; tidak ada endpoint tulis tanpa autentikasi.
+8. Panel admin tidak boleh bisa dicapai dari internet secara default pada mode panel-personal: pengikatan ke port acak dengan daftar putih IP atau tunnel, dapat dibuka lewat pengaturan.
+9. Proses panel berjalan tanpa hak root; hanya agen yang berhak istimewa, dengan AppArmor atau SELinux, seccomp, dan sistem berkas hanya-baca di luar direktori data.
+10. Waktu tambal terukur: pipa rilis darurat yang menerbitkan perbaikan keamanan dalam 24 jam sejak konfirmasi, dengan pemberitahuan di dashboard dan pembaruan otomatis yang dapat dinyalakan operator.
+11. Setiap CVE publik pada panel kompetitor yang tergolong kelas di atas dibuatkan uji regresi setara pada DigiPanel dan dilampirkan di laporan tahap.
+
+## 19. Metrik keunggulan dan protokol benchmark
+
+Klaim lebih cepat, lebih kuat, dan lebih aman hanya boleh dipakai bila terbukti oleh angka dari uji yang dapat diulang. Angka di bawah adalah target rancangan, bukan hasil. Agen wajib membangun harness benchmark otomatis dan mempublikasikan data mentah, termasuk kekalahan.
+
+| Metrik | Cara ukur | Target DigiPanel | Kompetitor pembanding |
+| --- | --- | --- | --- |
+| Memori panel saat idle (tanpa layanan hosting) | RSS proses panel dan agen, VM 2 vCPU 2 GB, OS sama | Di bawah 200 MB pada mode panel-personal | cPanel, Plesk, DirectAdmin, HestiaCP, aaPanel, CyberPanel |
+| Waktu instalasi penuh pada VM bersih | Dari perintah pertama sampai login admin berhasil | Di bawah 10 menit | Semua |
+| Waktu membuat akun lengkap (user, vhost, PHP, DB, DNS, email) | 100 akun berurutan, median dan p95 | Median di bawah 3 detik | Semua |
+| Latensi API dan halaman dashboard | p95 pada 200 sesi bersamaan | API di bawah 300 ms, halaman interaktif di bawah 1,5 detik | cPanel, Plesk, DirectAdmin |
+| Waktu muat dashboard pertama (ukuran aset) | Lighthouse, jaringan 4G terbatas | Skor kinerja minimal 90 | Semua |
+| Pembaruan panel | Durasi dan downtime layanan situs hosting | Nol downtime situs, rollback otomatis di bawah 2 menit | cPanel, Plesk |
+| Pergantian versi PHP per domain | Waktu dari klik sampai aktif | Di bawah 5 detik tanpa memutus koneksi aktif | cPanel, Plesk, DirectAdmin |
+| Ketahanan keamanan | Suite uji regresi CVE kelas kompetitor, DAST, uji penetrasi independen | 100 persen lulus, nol temuan tinggi atau kritis terbuka | Semua |
+| Waktu tambal keamanan | Konfirmasi sampai rilis | Maksimal 24 jam | Semua |
+| Total biaya kepemilikan (30, 100, 1000 akun) | Lisensi ditambah add-on wajib (keamanan, isolasi, backup, billing) | Lebih rendah karena fitur tersebut bawaan | cPanel dengan CloudLinux dan Imunify360, Plesk, WHMCS |
+
+### Protokol
+
+1. Perangkat keras, OS, dan konfigurasi identik untuk semua produk; versi dicatat; tiap uji diulang minimal 5 kali dan dilaporkan median serta sebaran.
+2. Produk berlisensi diuji sesuai syarat lisensi dan uji coba resmi masing-masing; periksa dahulu apakah EULA membatasi publikasi hasil benchmark sebelum angka diumumkan.
+3. Seluruh skrip dan data mentah disimpan di repositori agar pihak lain dapat mengulang.
+4. Bila DigiPanel kalah pada suatu metrik, jangan ubah metodologi; buat tugas perbaikan dan ukur ulang.
+5. Benchmark dijalankan ulang di setiap rilis mayor sebagai gerbang rilis (regresi kinerja lebih dari 10 persen menggagalkan rilis).
+
+## 20. Fitur pembeda untuk menutup celah kompetitor
+
+- Semua kemampuan yang di kompetitor memerlukan add-on berbayar tersedia bawaan: isolasi sumber daya per akun (cgroups v2 dan namespace), pemindai malware dan WAF terkelola (ModSecurity dengan aturan CRS), backup inkremental terenkripsi dengan uji pemulihan otomatis, WordPress Toolkit, dan pemindai kerentanan aplikasi.
+- Model lisensi datar per server tanpa biaya per akun dan tanpa biaya per klien billing; mode personal gratis non-komersial.
+- Pencarian global lintas menu, fitur, pengaturan, akun, domain, dan dokumentasi dengan pintasan papan ketik; setiap tugas umum dapat dicapai maksimal tiga klik.
+- API pertama: seluruh fungsi UI tersedia lewat REST dan CLI `digipanel`, dengan SDK terbitan otomatis dan penyedia Terraform.
+- Importir migrasi satu langkah dari cPanel, Plesk, DirectAdmin, HestiaCP, aaPanel, serta WHMCS dan Blesta (klien, layanan, faktur, tiket), dengan mode uji coba tanpa mengubah data.
+- Pembaruan atomik: snapshot, migrasi basis data berversi, rilis bertahap per node, pemeriksaan kesehatan, rollback otomatis.
+- Observabilitas bawaan: metrik per akun dan per layanan, ekspor Prometheus, peringatan ke email, Telegram, WhatsApp, webhook, serta log audit tak dapat diubah dengan penyimpanan eksternal opsional.
+- Penerbitan pembaruan keamanan otomatis untuk OS dan runtime dengan jendela pemeliharaan, serta laporan paket usang per server.
+- Pengalaman admin: peringatan konflik dan kesehatan terlihat di dashboard, tindakan massal, templat paket, dan impersonasi tercatat.
+- Dokumentasi dan transparansi: advisori keamanan publik untuk setiap tambalan, catatan rilis yang menyebut perbaikan keamanan secara jelas.
+
+## 21. Tahap tambahan dan checklist benchmark
+
+### Tahap 11: Benchmark kompetitif dan penutupan celah
+
+Cakupan: bangun harness benchmark, jalankan seluruh metrik bagian 19 terhadap semua kompetitor yang dapat diuji sah, terbitkan laporan, buat tugas perbaikan untuk setiap metrik yang kalah, ulangi sampai target tercapai atau alasan teknis tercatat. Gerbang: laporan benchmark dengan data mentah, seluruh uji regresi CVE kelas kompetitor lulus, tidak ada klaim pemasaran tanpa angka pendukung.
+
+### Tambahan checklist akhir (lengkapi bagian 15)
+
+- [ ] Seluruh 11 kontrol keamanan bagian 18 terbukti dengan uji otomatis
+- [ ] Rute tanpa autentikasi nol selain daftar publik yang ditinjau
+- [ ] Harness benchmark dan data mentah tersimpan, hasil dipublikasikan termasuk metrik yang kalah
+- [ ] Target bagian 19 tercapai atau deviasi tercatat dengan rencana perbaikan
+- [ ] Importir migrasi dari kompetitor utama lulus uji dengan data nyata
+- [ ] Pemeriksaan hukum: syarat lisensi kompetitor terkait benchmark, merek, dan aset telah ditinjau
+

@@ -37,50 +37,66 @@ export const FileManagerModal: React.FC<FileManagerModalProps> = ({
   const t = (key: any) => getTranslation(language, key);
 
   const [currentPath] = useState('/home/testuser/public_html');
-  const [files, setFiles] = useState<FileItem[]>([
-    { id: '1', name: 'wp-admin', type: 'folder', size: '4 KB', modified: '2026-10-24 11:20', permissions: '0755' },
-    { id: '2', name: 'wp-content', type: 'folder', size: '4 KB', modified: '2026-10-25 14:15', permissions: '0755' },
-    { id: '3', name: 'wp-includes', type: 'folder', size: '4 KB', modified: '2026-10-24 11:20', permissions: '0755' },
-    { id: '4', name: '.htaccess', type: 'file', size: '284 B', modified: '2026-10-24 11:25', permissions: '0644' },
-    { id: '5', name: 'index.php', type: 'file', size: '405 B', modified: '2026-10-24 11:20', permissions: '0644' },
-    { id: '6', name: 'wp-config.php', type: 'file', size: '3.4 KB', modified: '2026-10-24 11:22', permissions: '0600' },
-  ]);
-
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
 
+  const fetchFiles = async () => {
+    try {
+      const res = await fetch(`/api/v1/files/list?path=${encodeURIComponent(currentPath)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data.map((item: any, idx: number) => ({
+          id: `file-${idx}`,
+          name: item.name,
+          type: item.isDir ? 'folder' : 'file',
+          size: `${Math.round(item.size / 1024 * 10) / 10} KB`,
+          modified: item.modified,
+          permissions: item.permissions
+        })));
+      }
+    } catch {
+      // fallback
+    }
+  };
+
+  React.useEffect(() => {
+    if (isOpen) {
+      fetchFiles();
+    }
+  }, [isOpen, currentPath]);
+
   if (!isOpen) return null;
 
-  const handleOpenFile = (file: FileItem) => {
+  const handleOpenFile = async (file: FileItem) => {
     setSelectedFile(file);
-    if (file.name === 'index.php') {
-      setPreviewContent(`<?php
-/**
- * Front to the WordPress application. This file doesn't do anything, but loads
- * wp-blog-header.php which tells WordPress to load the theme and display it.
- *
- * @package WordPress
- */
+    try {
+      const filePath = `${currentPath}/${file.name}`;
+      const res = await fetch(`/api/v1/files/content?file=${encodeURIComponent(filePath)}`);
+      if (res.ok) {
+        const text = await res.text();
+        setPreviewContent(text);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    setPreviewContent(`// File: ${file.name}\n// Loaded from DigiPanel live filesystem`);
+  };
 
-define( 'WP_USE_THEMES', true );
-
-/** Loads the WordPress Environment and Template */
-require __DIR__ . '/wp-blog-header.php';
-`);
-    } else if (file.name === '.htaccess') {
-      setPreviewContent(`# BEGIN WordPress
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteBase /
-RewriteRule ^index\\.php$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.php [L]
-</IfModule>
-# END WordPress
-`);
-    } else {
-      setPreviewContent(`// Contents of ${file.name}\n// DigiPanel Safe Sandbox`);
+  const handleSaveFile = async () => {
+    if (!selectedFile || previewContent === null) return;
+    try {
+      const filePath = `${currentPath}/${selectedFile.name}`;
+      await fetch('/api/v1/files/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath, content: previewContent })
+      });
+      alert(`${t('fileSavedOk')} ${selectedFile.name}`);
+      fetchFiles();
+    } catch {
+      alert(t('fileSaveFailed'));
     }
   };
 
@@ -134,19 +150,19 @@ RewriteRule . /index.php [L]
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn btn-secondary btn-sm">
               <Plus size={14} />
-              <span>New File</span>
+              <span>{t('fileNewFile')}</span>
             </button>
             <button className="btn btn-secondary btn-sm">
               <Folder size={14} />
-              <span>New Folder</span>
+              <span>{t('fileNewFolder')}</span>
             </button>
             <button className="btn btn-primary btn-sm">
               <Upload size={14} />
-              <span>Upload</span>
+              <span>{t('fileUpload')}</span>
             </button>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Quota: 0.06 MB / 50 MB
+            {t('fileQuotaLabel')}: 0.06 MB / 50 MB
           </div>
         </div>
 
@@ -157,10 +173,10 @@ RewriteRule . /index.php [L]
             <table className="glass-table">
               <thead>
                 <tr>
-                  <th>NAME</th>
-                  <th>SIZE</th>
-                  <th>PERMS</th>
-                  <th style={{ textAlign: 'right' }}>ACTION</th>
+                  <th>{t('fileThName')}</th>
+                  <th>{t('fileThSize')}</th>
+                  <th>{t('fileThPerms')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('thActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -250,13 +266,11 @@ RewriteRule . /index.php [L]
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
                 <button 
-                  onClick={() => {
-                    alert('File saved to server filesystem.');
-                  }}
+                  onClick={handleSaveFile}
                   className="btn btn-primary btn-sm"
                 >
                   <Check size={14} />
-                  <span>Save File</span>
+                  <span>{t('fileSaveBtn')}</span>
                 </button>
               </div>
             </div>

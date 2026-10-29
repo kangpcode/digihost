@@ -1,0 +1,21 @@
+{
+  "name": "firewall",
+  "version": "1.0.0",
+  "title": "Firewall & Intrusion Defense",
+  "description": "nftables ruleset management, fail2ban jail integration, rate limiting, and brute force mitigation.",
+  "permissions": [
+    "firewall.read",
+    "firewall.rules",
+    "firewall.block_ip",
+    "firewall.unblock_ip"
+  ],
+  "hooks": [
+    "ip.blocked",
+    "ip.unblocked",
+    "threat.detected"
+  ],
+  "menu": {
+    "section": "security",
+    "priority": 90
+  }
+}

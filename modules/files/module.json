@@ -1,0 +1,20 @@
+{
+  "name": "files",
+  "version": "1.0.0",
+  "title": "File Manager & Storage",
+  "description": "Secure chrooted web file manager, large upload streaming, archive extraction, and POSIX permissions.",
+  "permissions": [
+    "files.read",
+    "files.write",
+    "files.upload",
+    "files.archive"
+  ],
+  "hooks": [
+    "account.created",
+    "account.terminated"
+  ],
+  "menu": {
+    "section": "files",
+    "priority": 60
+  }
+}
