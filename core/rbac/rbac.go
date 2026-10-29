@@ -30,6 +30,7 @@ var rolePermissions = map[Role]map[string]bool{
 		"system.fleet.write":      true,
 		"system.modules.manage":   true,
 		"system.telemetry.view":   true,
+		"users.read":              true,
 		"apps.read":               true,
 		"apps.install":            true,
 		"apps.manage":             true,

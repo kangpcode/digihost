@@ -172,6 +172,8 @@ var routeRequiredPermissions = map[string]string{
 	"POST /api/v1/runtimes/apps/action":       "runtimes.manage",
 	"DELETE /api/v1/runtimes/apps":            "runtimes.manage",
 	"GET /api/v1/cluster/fleet":               "system.fleet.read",
+	"GET /api/v1/users":                       "users.read",
+	"GET /api/v1/hosting/packages":            "accounts.read",
 	"POST /api/v1/hosting/accounts":           "accounts.create",
 	"POST /api/v1/hosting/accounts/suspend":   "accounts.suspend",
 	"POST /api/v1/hosting/accounts/unsuspend": "accounts.suspend",
@@ -627,6 +629,42 @@ func NewServerHandler(state *ServerState) http.Handler {
 			"role":      string(user.Role),
 			"expiresIn": 86400,
 		})
+	})
+
+	mux.HandleFunc("/api/v1/hosting/packages", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.HostingManager.ListPackages())
+	})
+
+	// Panel identities. Secrets and password hashes never leave the process.
+	mux.HandleFunc("/api/v1/users", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		roleFilter := r.URL.Query().Get("role")
+		state.mu.RLock()
+		accounts := make([]map[string]any, 0, len(state.Users))
+		for _, user := range state.Users {
+			if roleFilter != "" && string(user.Role) != roleFilter {
+				continue
+			}
+			accounts = append(accounts, map[string]any{
+				"username":         user.Username,
+				"role":             user.Role,
+				"twoFactorEnabled": user.TwoFactorEnabled,
+			})
+		}
+		state.mu.RUnlock()
+		sort.Slice(accounts, func(i, j int) bool {
+			return fmt.Sprint(accounts[i]["username"]) < fmt.Sprint(accounts[j]["username"])
+		})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(accounts)
 	})
 
 	// 3. Current User Profile (Protected)

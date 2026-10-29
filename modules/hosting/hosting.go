@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -466,8 +467,22 @@ func (m *Manager) GetAccount(username string) (*HostingAccount, error) {
 	return acc, nil
 }
 
-func (m *Manager) ListAccounts() []*HostingAccount {
+// ListPackages returns a stable, sorted copy of the hosting plans configured in
+// this manager. Plans are real limit definitions used by account creation.
+func (m *Manager) ListPackages() []*AccountPackage {
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make([]*AccountPackage, 0, len(m.packages))
+	for _, pkg := range m.packages {
+		copied := *pkg
+		out = append(out, &copied)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func (m *Manager) ListAccounts() []*HostingAccount {	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	list := make([]*HostingAccount, 0, len(m.accounts))
