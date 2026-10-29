@@ -27,6 +27,7 @@ import (
 	"digipanel/modules/dns"
 	"digipanel/modules/hosting"
 	"digipanel/modules/mail"
+	"digipanel/modules/php"
 	"digipanel/modules/runtimes"
 	"digipanel/modules/ssl"
 )
@@ -129,6 +130,7 @@ type ServerState struct {
 	SSLManager      *ssl.Manager
 	MailManager     *mail.Manager
 	RuntimesManager *runtimes.Manager
+	PHPManager      *php.Manager
 	DnsRecords      []DnsRecord
 	LedgerItems     []LedgerEntry
 	ClusterNodes    []ClusterNode
@@ -157,6 +159,10 @@ var publicRoutes = map[string]bool{
 
 var routeRequiredPermissions = map[string]string{
 	"GET /api/v1/runtimes/apps":              "runtimes.view",
+	"GET /api/v1/php/versions":               "runtimes.view",
+	"GET /api/v1/php/domains":                 "runtimes.view",
+	"GET /api/v1/php/config":                   "runtimes.view",
+	"POST /api/v1/php/config":                  "runtimes.manage",
 	"GET /api/v1/runtimes/apps/logs":          "runtimes.view",
 	"GET /api/v1/runtimes/detected":           "runtimes.view",
 	"POST /api/v1/runtimes/apps":              "runtimes.manage",
@@ -260,7 +266,8 @@ echo "DigiPanel Native PHP Engine: " . phpversion();
 	state.DNSManager = dns.NewManager()
 	state.SSLManager = ssl.NewManager(filepath.Join(state.StorageDir, "ssl"))
 	state.MailManager = mail.NewManager("103.189.201.42")
-	state.RuntimesManager = runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
+	state.RuntimesManager =	runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
+	state.PHPManager = php.NewManager(filepath.Join(state.StorageDir, "php"))
 
 	// Seed testuser account in hosting manager
 	_, _ = state.HostingManager.CreateAccount(hosting.CreateAccountRequest{
@@ -330,6 +337,19 @@ state.DnsRecords = []DnsRecord{
 		{ID: 3, TxRef: "TX-1002", AccountCode: "1030-CASH-GATEWAY-STRIPE", AmountCents: 25000000, Direction: "debit", Currency: "IDR"},
 		{ID: 4, TxRef: "TX-1002", AccountCode: "4020-REVENUE-DOMAINS", AmountCents: 25000000, Direction: "credit", Currency: "IDR"},
 	}
+}
+
+// resolveUnixUserForDomain finds the hosting account that owns the domain and
+// returns its posix username for pool ownership. Only a real owning account
+// produces a value, so pools are never written with an invented user.
+func resolveUnixUserForDomain(state *ServerState, domain string) (string, error) {
+	clean := strings.ToLower(strings.TrimSpace(domain))
+	for _, acc := range state.HostingManager.ListAccounts() {
+		if strings.ToLower(acc.PrimaryDomain) == clean {
+			return acc.Username, nil
+		}
+	}
+	return "", fmt.Errorf("domain %s is not owned by any hosting account; pool owner unresolved", clean)
 }
 
 func getRealTelemetry() SystemTelemetry {
@@ -895,6 +915,69 @@ func NewServerHandler(state *ServerState) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		detected := state.RuntimesManager.DetectedRuntimes()
 		_ = json.NewEncoder(w).Encode(detected)
+	})
+
+	// PHP version inventory from real interpreter binaries.
+	mux.HandleFunc("/api/v1/php/versions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.PHPManager.ListVersions())
+	})
+
+	// Per-domain PHP configurations already written to disk.
+	mux.HandleFunc("/api/v1/php/domains", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.PHPManager.ListDomainConfigs())
+	})
+
+	// Read or write per-domain PHP configuration. Writes produce real ini and
+	// pool files; the report names the files and states the honest reload status.
+	mux.HandleFunc("/api/v1/php/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case "GET":
+			domain := r.URL.Query().Get("domain")
+			if domain == "" {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing domain"})
+				return
+			}
+			cfg, err := state.PHPManager.GetDomainConfig(domain)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "configured": false})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"configured": true, "config": cfg})
+		case "POST":
+			var req php.ConfigureRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Bad request", http.StatusBadRequest)
+				return
+			}
+			if req.UnixUser == "" {
+				owner, err := resolveUnixUserForDomain(state, req.Domain)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				req.UnixUser = owner
+			}
+			report, err := state.PHPManager.ConfigureDomain(req)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			state.AuditLogger.Append("admin", "php.configure", "domain", report.Domain, fmt.Sprintf(`{"version":%q,"memoryLimit":%q}`, report.Version, req.MemoryLimit), r.RemoteAddr)
+			_ = json.NewEncoder(w).Encode(report)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	// 9. Double-Entry Billing Ledger (Protected - billing.ledger.read)
