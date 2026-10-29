@@ -27,7 +27,10 @@ import (
 	"digipanel/core/auth"
 	"digipanel/core/queue"
 	"digipanel/core/rbac"
+	"digipanel/modules/backup"
+	"digipanel/modules/db"
 	"digipanel/modules/dns"
+	"digipanel/modules/firewall"
 	"digipanel/modules/hosting"
 	"digipanel/modules/mail"
 	"digipanel/modules/php"
@@ -136,6 +139,10 @@ type ServerState struct {
 	RuntimesManager *runtimes.Manager
 	PHPManager      *php.Manager
 	SoftInstaller   *softinstaller.Manager
+	DBManager       *db.Manager
+	Backups         *backup.Engine
+	Firewall        *firewall.Manager
+	Agent           *AgentClient
 	DnsRecords      []DnsRecord
 	LedgerItems     []LedgerEntry
 	ClusterNodes    []ClusterNode
@@ -167,35 +174,56 @@ var publicRoutes = map[string]bool{
 }
 
 var routeRequiredPermissions = map[string]string{
-	"GET /api/v1/runtimes/apps":               "runtimes.view",
-	"GET /api/v1/php/versions":                "runtimes.view",
-	"GET /api/v1/php/domains":                 "runtimes.view",
-	"GET /api/v1/php/config":                  "runtimes.view",
-	"POST /api/v1/php/config":                 "runtimes.manage",
-	"GET /api/v1/runtimes/apps/logs":          "runtimes.view",
-	"GET /api/v1/runtimes/detected":           "runtimes.view",
-	"POST /api/v1/runtimes/apps":              "runtimes.manage",
-	"POST /api/v1/runtimes/apps/action":       "runtimes.manage",
-	"DELETE /api/v1/runtimes/apps":            "runtimes.manage",
-	"GET /api/v1/cluster/fleet":               "system.fleet.read",
-	"GET /api/v1/system/telemetry":            "system.telemetry.view",
-	"GET /api/v1/system/services":             "system.telemetry.view",
-	"GET /api/v1/users":                       "users.read",
-	"POST /api/v1/users":                      "users.write",
-	"PUT /api/v1/users":                       "users.write",
-	"DELETE /api/v1/users":                    "users.write",
-	"GET /api/v1/hosting/packages":            "accounts.read",
-	"POST /api/v1/hosting/packages":           "accounts.modify_package",
-	"PUT /api/v1/hosting/packages":            "accounts.modify_package",
-	"DELETE /api/v1/hosting/packages":         "accounts.modify_package",
-	"GET /api/v1/hosting/accounts":            "accounts.read",
-	"GET /api/v1/hosting/accounts/detail":     "accounts.read",
-	"GET /api/v1/hosting/accounts/logs":       "accounts.read",
-	"GET /api/v1/files/list":                  "files.read",
-	"GET /api/v1/files/content":               "files.read",
-	"GET /api/v1/billing/invoices":            "billing.invoices.read",
-	"POST /api/v1/billing/invoices":           "billing.invoices.write",
-	"POST /api/v1/billing/invoices/pay":       "billing.invoices.write",
+	"GET /api/v1/runtimes/apps":           "runtimes.view",
+	"GET /api/v1/php/versions":            "runtimes.view",
+	"GET /api/v1/php/domains":             "runtimes.view",
+	"GET /api/v1/php/config":              "runtimes.view",
+	"POST /api/v1/php/config":             "runtimes.manage",
+	"GET /api/v1/runtimes/apps/logs":      "runtimes.view",
+	"GET /api/v1/runtimes/detected":       "runtimes.view",
+	"POST /api/v1/runtimes/apps":          "runtimes.manage",
+	"POST /api/v1/runtimes/apps/action":   "runtimes.manage",
+	"DELETE /api/v1/runtimes/apps":        "runtimes.manage",
+	"GET /api/v1/cluster/fleet":           "system.fleet.read",
+	"GET /api/v1/system/telemetry":        "system.telemetry.view",
+	"GET /api/v1/system/services":         "system.telemetry.view",
+	"GET /api/v1/users":                   "users.read",
+	"POST /api/v1/users":                  "users.write",
+	"PUT /api/v1/users":                   "users.write",
+	"DELETE /api/v1/users":                "users.write",
+	"GET /api/v1/hosting/packages":        "accounts.read",
+	"POST /api/v1/hosting/packages":       "accounts.modify_package",
+	"PUT /api/v1/hosting/packages":        "accounts.modify_package",
+	"DELETE /api/v1/hosting/packages":     "accounts.modify_package",
+	"GET /api/v1/hosting/accounts":        "accounts.read",
+	"GET /api/v1/hosting/accounts/detail": "accounts.read",
+	"GET /api/v1/hosting/accounts/logs":   "accounts.read",
+	"GET /api/v1/files/list":              "files.read",
+	"GET /api/v1/files/content":           "files.read",
+	"GET /api/v1/billing/invoices":        "billing.invoices.read",
+	"POST /api/v1/billing/invoices":       "billing.invoices.write", "POST /api/v1/billing/invoices/pay": "billing.invoices.write",
+	"GET /api/v1/databases":                   "db.read",
+	"POST /api/v1/databases":                  "db.create",
+	"DELETE /api/v1/databases":                "db.delete",
+	"GET /api/v1/databases/status":            "db.read",
+	"GET /api/v1/databases/users":             "db.read",
+	"POST /api/v1/databases/users":            "db.users",
+	"PUT /api/v1/databases/users":             "db.users",
+	"DELETE /api/v1/databases/users":          "db.users",
+	"GET /api/v1/backups":                     "backup.read",
+	"POST /api/v1/backups":                    "backup.create",
+	"DELETE /api/v1/backups":                  "backup.delete",
+	"GET /api/v1/backups/status":              "backup.read",
+	"POST /api/v1/backups/restore":            "backup.restore",
+	"POST /api/v1/backups/verify":             "backup.read",
+	"GET /api/v1/backups/schedules":           "backup.read",
+	"POST /api/v1/backups/schedules":          "backup.create",
+	"DELETE /api/v1/backups/schedules":        "backup.create",
+	"GET /api/v1/firewall/rules":              "firewall.read",
+	"POST /api/v1/firewall/rules":             "firewall.write",
+	"DELETE /api/v1/firewall/rules":           "firewall.write",
+	"POST /api/v1/firewall/apply":             "firewall.write",
+	"GET /api/v1/firewall/status":             "firewall.read",
 	"POST /api/v1/hosting/accounts":           "accounts.create",
 	"POST /api/v1/hosting/accounts/suspend":   "accounts.suspend",
 	"POST /api/v1/hosting/accounts/unsuspend": "accounts.suspend",
@@ -242,6 +270,9 @@ func initStorage(state *ServerState) {
 		filepath.Join(state.StorageDir, "billing"),
 		filepath.Join(state.StorageDir, "runtimes"),
 		filepath.Join(state.StorageDir, "sites"),
+		filepath.Join(state.StorageDir, "backups"),
+		filepath.Join(state.StorageDir, "firewall"),
+		filepath.Join(state.StorageDir, "restores"),
 	}
 	for _, d := range dirs {
 		_ = os.MkdirAll(d, 0755)
@@ -273,6 +304,33 @@ func initStorage(state *ServerState) {
 	state.RuntimesManager = runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
 	state.PHPManager = php.NewManager(filepath.Join(state.StorageDir, "php"))
 	state.SoftInstaller = newSoftInstallerManager(state)
+	state.DBManager = db.NewManager(db.Options{
+		Engine:        os.Getenv("DIGIPANEL_DB_ENGINE"),
+		Binary:        os.Getenv("DIGIPANEL_MYSQL_BINARY"),
+		Host:          os.Getenv("DIGIPANEL_DB_HOST"),
+		Port:          os.Getenv("DIGIPANEL_DB_PORT"),
+		AdminUser:     os.Getenv("DIGIPANEL_DB_ADMIN_USER"),
+		AdminPassword: os.Getenv("DIGIPANEL_DB_ADMIN_PASSWORD"),
+	})
+	homeBase := strings.TrimSpace(os.Getenv("DIGIPANEL_HOME_BASE"))
+	if homeBase == "" {
+		homeBase = filepath.Join(state.StorageDir, "vhosts")
+	}
+	state.Backups = backup.NewEngine(backup.Options{
+		Root:       filepath.Join(state.StorageDir, "backups"),
+		Passphrase: os.Getenv("DIGIPANEL_BACKUP_PASSPHRASE"),
+		HomeBase:   homeBase,
+	})
+	state.Agent = NewAgentClient(os.Getenv("DIGIPANEL_AGENT_SOCKET"))
+	var firewallRunner firewall.Runner
+	if state.Agent.Available() {
+		firewallRunner = firewall.AgentRunner{Call: state.Agent.Call}
+	} else if os.Getenv("DIGIPANEL_FIREWALL_RUNNER") == "local" {
+		// Local execution needs root; it exists for single-host installations
+		// where the panel is started by the service manager as root.
+		firewallRunner = &firewall.LocalRunner{Binary: os.Getenv("DIGIPANEL_NFT_BINARY")}
+	}
+	state.Firewall = firewall.NewManager(filepath.Join(state.StorageDir, "firewall"), firewallRunner)
 
 	// Queue handlers perform the real operation for each task type. An unknown
 	// type fails the job instead of reporting a hollow success.
@@ -823,6 +881,17 @@ func NewServerHandler(state *ServerState) http.Handler {
 	// Native invoice ledger.
 	mux.HandleFunc("/api/v1/billing/invoices", state.handleInvoices)
 	mux.HandleFunc("/api/v1/billing/invoices/pay", state.handleInvoicePayment)
+	mux.HandleFunc("/api/v1/databases", state.handleDatabases)
+	mux.HandleFunc("/api/v1/databases/status", state.handleDatabaseStatus)
+	mux.HandleFunc("/api/v1/databases/users", state.handleDatabaseUsers)
+	mux.HandleFunc("/api/v1/backups", state.handleBackups)
+	mux.HandleFunc("/api/v1/backups/restore", state.handleBackupRestore)
+	mux.HandleFunc("/api/v1/backups/verify", state.handleBackupVerify)
+	mux.HandleFunc("/api/v1/backups/status", state.handleBackupStatus)
+	mux.HandleFunc("/api/v1/backups/schedules", state.handleBackupSchedules)
+	mux.HandleFunc("/api/v1/firewall/rules", state.handleFirewallRules)
+	mux.HandleFunc("/api/v1/firewall/apply", state.handleFirewallApply)
+	mux.HandleFunc("/api/v1/firewall/status", state.handleFirewallStatus)
 
 	// Panel identities. Secrets and password hashes never leave the process.
 	mux.HandleFunc("/api/v1/users", func(w http.ResponseWriter, r *http.Request) {
@@ -2129,6 +2198,23 @@ func main() {
 	}
 
 	handler := NewServerHandler(state)
+
+	// The scheduler executes due backup windows once a minute. It only runs when
+	// backup encryption is configured; a node without a passphrase reports the
+	// capability as unavailable instead of writing plaintext archives.
+	if state.Backups != nil && state.Backups.Configured() {
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for now := range ticker.C {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				if count, err := state.RunDueBackupSchedules(ctx, now); err != nil {
+					fmt.Fprintf(os.Stderr, "DigiPanel scheduler: %d backup windows executed, last error: %v\n", count, err)
+				}
+				cancel()
+			}
+		}()
+	}
 
 	port := os.Getenv("DIGIPANEL_PORT")
 	if port == "" {

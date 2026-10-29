@@ -74,38 +74,38 @@ type Record struct {
 }
 
 type DnssecKeys struct {
-	Enabled       bool      `json:"enabled"`
-	KeyTag        int       `json:"keyTag"`
-	Algorithm     int       `json:"algorithm"` // 13 = ECDSAP256SHA256
-	DigestType    int       `json:"digestType"` // 2 = SHA-256
-	Digest        string    `json:"digest"`
-	DSRecord      string    `json:"dsRecord"`
-	KskPublicKey  string    `json:"kskPublicKey"`
-	ZskPublicKey  string    `json:"zskPublicKey"`
-	ActivatedAt   time.Time `json:"activatedAt"`
+	Enabled      bool      `json:"enabled"`
+	KeyTag       int       `json:"keyTag"`
+	Algorithm    int       `json:"algorithm"`  // 13 = ECDSAP256SHA256
+	DigestType   int       `json:"digestType"` // 2 = SHA-256
+	Digest       string    `json:"digest"`
+	DSRecord     string    `json:"dsRecord"`
+	KskPublicKey string    `json:"kskPublicKey"`
+	ZskPublicKey string    `json:"zskPublicKey"`
+	ActivatedAt  time.Time `json:"activatedAt"`
 }
 
 type Zone struct {
-	Name        string     `json:"name"`
-	TenantID    string     `json:"tenantId"`
-	Serial      int64      `json:"serial"`
-	PrimaryNS   string     `json:"primaryNs"`
-	AdminEmail  string     `json:"adminEmail"`
-	Records     []Record   `json:"records"`
-	Dnssec      DnssecKeys `json:"dnssec"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	Name       string     `json:"name"`
+	TenantID   string     `json:"tenantId"`
+	Serial     int64      `json:"serial"`
+	PrimaryNS  string     `json:"primaryNs"`
+	AdminEmail string     `json:"adminEmail"`
+	Records    []Record   `json:"records"`
+	Dnssec     DnssecKeys `json:"dnssec"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 type ZoneHealth struct {
-	ZoneName        string   `json:"zoneName"`
-	Healthy         bool     `json:"healthy"`
-	HasSOA          bool     `json:"hasSoa"`
-	HasApexA        bool     `json:"hasApexA"`
-	NSCount         int      `json:"nsCount"`
-	HasRedundantNS  bool     `json:"hasRedundantNs"`
-	HasMX           bool     `json:"hasMx"`
-	Issues          []string `json:"issues"`
+	ZoneName       string   `json:"zoneName"`
+	Healthy        bool     `json:"healthy"`
+	HasSOA         bool     `json:"hasSoa"`
+	HasApexA       bool     `json:"hasApexA"`
+	NSCount        int      `json:"nsCount"`
+	HasRedundantNS bool     `json:"hasRedundantNs"`
+	HasMX          bool     `json:"hasMx"`
+	Issues         []string `json:"issues"`
 }
 
 type Manager struct {

@@ -38,7 +38,7 @@ func TestArgon2idHashingAndVerification(t *testing.T) {
 
 func TestAesGcmSecretsEncryption(t *testing.T) {
 	masterKey := []byte("01234567890123456789012345678901") // 32-byte AES-256 key
-	secretData := []byte("JBSWY3DPEHPK3PXP")               // Sample TOTP Base32 Secret
+	secretData := []byte("JBSWY3DPEHPK3PXP")                // Sample TOTP Base32 Secret
 
 	ciphertext, err := EncryptSecret(masterKey, secretData)
 	if err != nil {

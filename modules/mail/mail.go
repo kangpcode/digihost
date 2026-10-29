@@ -73,13 +73,13 @@ type Forwarder struct {
 }
 
 type Message struct {
-	ID        string    `json:"id"`
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Subject   string    `json:"subject"`
-	Body      string    `json:"body"`
-	Headers   string    `json:"headers"`
-	SizeBytes int64     `json:"sizeBytes"`
+	ID         string    `json:"id"`
+	From       string    `json:"from"`
+	To         string    `json:"to"`
+	Subject    string    `json:"subject"`
+	Body       string    `json:"body"`
+	Headers    string    `json:"headers"`
+	SizeBytes  int64     `json:"sizeBytes"`
 	ReceivedAt time.Time `json:"receivedAt"`
 }
 

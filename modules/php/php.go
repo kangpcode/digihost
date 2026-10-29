@@ -22,15 +22,15 @@ import (
 )
 
 var (
-	ErrInvalidDomain         = errors.New("domain format invalid for PHP configuration")
-	ErrRuntimeNotFound       = errors.New("requested PHP version is not installed on this host")
-	ErrInvalidMemoryLimit    = errors.New("memory_limit invalid: size with M or G suffix required")
-	ErrInvalidExecutionTime  = errors.New("max_execution_time invalid: 0-3600 seconds required")
-	ErrInvalidUploadSize     = errors.New("upload_max_filesize invalid: size with M or G suffix required")
-	ErrInvalidExtensionName  = errors.New("extension name invalid")
-	ErrUnixUserMissing       = errors.New("owning unix user not found for FPM pool")
-	ErrUnknownAllowUrlFopen  = errors.New("allow_url_fopen must be On, Off, or 1, 0")
-	ErrFactoryBinaryMissing  = errors.New("php binary disappeared from the host")
+	ErrInvalidDomain        = errors.New("domain format invalid for PHP configuration")
+	ErrRuntimeNotFound      = errors.New("requested PHP version is not installed on this host")
+	ErrInvalidMemoryLimit   = errors.New("memory_limit invalid: size with M or G suffix required")
+	ErrInvalidExecutionTime = errors.New("max_execution_time invalid: 0-3600 seconds required")
+	ErrInvalidUploadSize    = errors.New("upload_max_filesize invalid: size with M or G suffix required")
+	ErrInvalidExtensionName = errors.New("extension name invalid")
+	ErrUnixUserMissing      = errors.New("owning unix user not found for FPM pool")
+	ErrUnknownAllowUrlFopen = errors.New("allow_url_fopen must be On, Off, or 1, 0")
+	ErrFactoryBinaryMissing = errors.New("php binary disappeared from the host")
 )
 
 type Version struct {
@@ -42,13 +42,13 @@ type Version struct {
 }
 
 type SupportedVersionIDs struct {
-	AlphaNumFirst  string
+	AlphaNumFirst string
 }
 
 var (
-	safeDomainRegex  = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\-\.]{1,253}[a-zA-Z0-9]$`)
-	safeExtRegex     = regexp.MustCompile(`^[a-zA-Z0-9_]{2,32}$`)
-	safeSizeRegex    = regexp.MustCompile(`^\d{1,5}[MG]$`)
+	safeDomainRegex   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\-\.]{1,253}[a-zA-Z0-9]$`)
+	safeExtRegex      = regexp.MustCompile(`^[a-zA-Z0-9_]{2,32}$`)
+	safeSizeRegex     = regexp.MustCompile(`^\d{1,5}[MG]$`)
 	safeFpmValueRegex = regexp.MustCompile(`^[A-Za-z0-9_:+\-\. ]{1,256}$`)
 )
 
@@ -58,7 +58,7 @@ type DomainConfig struct {
 	MemoryLimit       string    `json:"memoryLimit"`      // e.g. "512M"
 	MaxExecutionTime  int       `json:"maxExecutionTime"` // seconds
 	UploadMaxFilesize string    `json:"uploadMaxFilesize"`
-	Extensions        []string  `json:"extensions"` // enabled extension names, subset of real list
+	Extensions        []string  `json:"extensions"`    // enabled extension names, subset of real list
 	AllowUrlFopen     string    `json:"allowUrlFopen"` // On or Off
 	UnixUser          string    `json:"unixUser"`
 	PoolSocket        string    `json:"poolSocket"`
@@ -77,24 +77,24 @@ type ConfigureRequest struct {
 }
 
 type ConfigReport struct {
-	Domain       string    `json:"domain"`
-	IniPath      string    `json:"iniPath"`
-	PoolPath     string    `json:"poolPath"`
-	PoolSocket   string    `json:"poolSocket"`
-	Version      string    `json:"version"`
-	FpmDetected  bool      `json:"fpmDetected"`
-	FpmReloaded  bool      `json:"fpmReloaded"`
-	ReloadNote   string    `json:"reloadNote"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	Domain      string    `json:"domain"`
+	IniPath     string    `json:"iniPath"`
+	PoolPath    string    `json:"poolPath"`
+	PoolSocket  string    `json:"poolSocket"`
+	Version     string    `json:"version"`
+	FpmDetected bool      `json:"fpmDetected"`
+	FpmReloaded bool      `json:"fpmReloaded"`
+	ReloadNote  string    `json:"reloadNote"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type Manager struct {
-	mu        sync.RWMutex
-	baseDir   string
-	iniDir    string
-	poolDir   string
-	versions  map[string]*Version
-	domains   map[string]*DomainConfig // domain -> normalized config
+	mu       sync.RWMutex
+	baseDir  string
+	iniDir   string
+	poolDir  string
+	versions map[string]*Version
+	domains  map[string]*DomainConfig // domain -> normalized config
 }
 
 func NewManager(baseDir string) *Manager {
@@ -399,7 +399,7 @@ func renderPool(cfg *DomainConfig, ver *Version) string {
 // persistLocked writes the domain registry so configs survive restarts.
 func (m *Manager) persistLocked() error {
 	type persistedState struct {
-		Domains  map[string]*DomainConfig `json:"domains"`
+		Domains map[string]*DomainConfig `json:"domains"`
 	}
 	data, err := json.MarshalIndent(persistedState{Domains: m.domains}, "", "  ")
 	if err != nil {

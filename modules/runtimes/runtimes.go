@@ -24,19 +24,19 @@ import (
 )
 
 var (
-	ErrInvalidName            = errors.New("application name invalid: 3-48 characters, letters digits dashes")
-	ErrInvalidRuntime         = errors.New("runtime kind invalid: must be nodejs, python, or golang")
-	ErrInvalidPath            = errors.New("application path invalid: absolute directory path required")
-	ErrInvalidEntry           = errors.New("entry file invalid: bare filename without traversal")
-	ErrEntryFileMissing       = errors.New("entry file does not exist in application path")
-	ErrInvalidPort            = errors.New("port invalid: must be between 1024 and 65535")
-	ErrDuplicateName          = errors.New("application with the same name already exists")
-	ErrDuplicatePort          = errors.New("listen port already assigned to another application")
-	ErrAppNotFound            = errors.New("application not found in runtime registry")
-	ErrAlreadyRunning         = errors.New("application is already running")
-	ErrNotRunning             = errors.New("application is not running")
-	ErrRuntimeUnavailable     = errors.New("runtime binary not detected on this host")
-	ErrStartupFailed          = errors.New("application process exited immediately after start")
+	ErrInvalidName        = errors.New("application name invalid: 3-48 characters, letters digits dashes")
+	ErrInvalidRuntime     = errors.New("runtime kind invalid: must be nodejs, python, or golang")
+	ErrInvalidPath        = errors.New("application path invalid: absolute directory path required")
+	ErrInvalidEntry       = errors.New("entry file invalid: bare filename without traversal")
+	ErrEntryFileMissing   = errors.New("entry file does not exist in application path")
+	ErrInvalidPort        = errors.New("port invalid: must be between 1024 and 65535")
+	ErrDuplicateName      = errors.New("application with the same name already exists")
+	ErrDuplicatePort      = errors.New("listen port already assigned to another application")
+	ErrAppNotFound        = errors.New("application not found in runtime registry")
+	ErrAlreadyRunning     = errors.New("application is already running")
+	ErrNotRunning         = errors.New("application is not running")
+	ErrRuntimeUnavailable = errors.New("runtime binary not detected on this host")
+	ErrStartupFailed      = errors.New("application process exited immediately after start")
 )
 
 type RuntimeKind string
@@ -65,16 +65,16 @@ var safeNameRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]{2,48}$`)
 // App is a registry entry. Status, PID and metrics are derived at read time
 // from the live process, so this struct never stores stale fabricated values.
 type App struct {
-	ID           string      `json:"id"`
-	Name         string      `json:"name"`
-	Runtime      RuntimeKind `json:"runtime"`
-	Version      string      `json:"version"`
-	Path         string      `json:"path"`
-	EntryFile    string      `json:"entryFile"`
-	Port         int         `json:"port"`
-	Unit         string      `json:"unit"` // "web", "worker", "cron"
-	Environment  string      `json:"environment"` // production, staging, development
-	CreatedAt    time.Time   `json:"createdAt"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Runtime     RuntimeKind `json:"runtime"`
+	Version     string      `json:"version"`
+	Path        string      `json:"path"`
+	EntryFile   string      `json:"entryFile"`
+	Port        int         `json:"port"`
+	Unit        string      `json:"unit"`        // "web", "worker", "cron"
+	Environment string      `json:"environment"` // production, staging, development
+	CreatedAt   time.Time   `json:"createdAt"`
 }
 
 type CreateAppRequest struct {
@@ -99,7 +99,7 @@ type Snapshot struct {
 	Unit        string      `json:"unit"`
 	Environment string      `json:"environment"`
 	CreatedAt   time.Time   `json:"createdAt"`
-	Status      string      `json:"status"` // running, stopped, error
+	Status      string      `json:"status"`            // running, stopped, error
 	Failure     string      `json:"failure,omitempty"` // last failure message
 	PID         int         `json:"pid"`
 	MemoryMb    float64     `json:"memoryMb"`
@@ -120,9 +120,9 @@ type Manager struct {
 }
 
 type processRecord struct {
-	PID       int       `json:"pid"`
-	StartTicks uint64   `json:"startTicks"` // start_time from /proc, guards PID reuse
-	StartedAt time.Time `json:"startedAt"`
+	PID        int       `json:"pid"`
+	StartTicks uint64    `json:"startTicks"` // start_time from /proc, guards PID reuse
+	StartedAt  time.Time `json:"startedAt"`
 }
 
 const clockTicksPerSecond = 100 // HZ on every standard Linux build
@@ -680,9 +680,9 @@ func formatUptime(seconds float64) string {
 // supervisor survives panel restarts.
 func (m *Manager) persistLocked() error {
 	type persistedState struct {
-		Apps       map[string]*App           `json:"apps"`
-		Processes  map[string]*processRecord `json:"processes"`
-		NextID     int                       `json:"nextId"`
+		Apps      map[string]*App           `json:"apps"`
+		Processes map[string]*processRecord `json:"processes"`
+		NextID    int                       `json:"nextId"`
 	}
 	state := persistedState{Apps: m.apps, Processes: m.pidFile, NextID: m.nextID}
 	data, err := json.MarshalIndent(state, "", "  ")

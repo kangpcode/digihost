@@ -60,39 +60,39 @@ const (
 )
 
 type Certificate struct {
-	ID             string        `json:"id"`
-	Domain         string        `json:"domain"`
-	SANs           []string      `json:"sans"`
-	Provider       Provider      `json:"provider"`
-	Challenge      ChallengeType `json:"challenge"`
-	Status         CertStatus    `json:"status"`
-	CertPEM        string        `json:"certPem"`
-	PrivateKeyPEM  string        `json:"privateKeyPem"`
-	Issuer         string        `json:"issuer"`
-	SerialNumber   string        `json:"serialNumber"`
-	NotBefore      time.Time     `json:"notBefore"`
-	NotAfter       time.Time     `json:"notAfter"`
-	DaysRemaining  int           `json:"daysRemaining"`
-	IsWildcard     bool          `json:"isWildcard"`
-	AutoRenew      bool          `json:"autoRenew"`
-	LastRenewedAt  time.Time     `json:"lastRenewedAt"`
-	StorageDir     string        `json:"storageDir,omitempty"`
+	ID            string        `json:"id"`
+	Domain        string        `json:"domain"`
+	SANs          []string      `json:"sans"`
+	Provider      Provider      `json:"provider"`
+	Challenge     ChallengeType `json:"challenge"`
+	Status        CertStatus    `json:"status"`
+	CertPEM       string        `json:"certPem"`
+	PrivateKeyPEM string        `json:"privateKeyPem"`
+	Issuer        string        `json:"issuer"`
+	SerialNumber  string        `json:"serialNumber"`
+	NotBefore     time.Time     `json:"notBefore"`
+	NotAfter      time.Time     `json:"notAfter"`
+	DaysRemaining int           `json:"daysRemaining"`
+	IsWildcard    bool          `json:"isWildcard"`
+	AutoRenew     bool          `json:"autoRenew"`
+	LastRenewedAt time.Time     `json:"lastRenewedAt"`
+	StorageDir    string        `json:"storageDir,omitempty"`
 }
 
 type IssueRequest struct {
-	Domain     string        `json:"domain"`
-	SANs       []string      `json:"sans,omitempty"`
-	Provider   Provider      `json:"provider,omitempty"`
-	Challenge  ChallengeType `json:"challenge,omitempty"`
-	KeyType    string        `json:"keyType,omitempty"` // "ecdsa" or "rsa"
-	AutoRenew  bool          `json:"autoRenew"`
+	Domain    string        `json:"domain"`
+	SANs      []string      `json:"sans,omitempty"`
+	Provider  Provider      `json:"provider,omitempty"`
+	Challenge ChallengeType `json:"challenge,omitempty"`
+	KeyType   string        `json:"keyType,omitempty"` // "ecdsa" or "rsa"
+	AutoRenew bool          `json:"autoRenew"`
 }
 
 type AutoSSLSummary struct {
-	CheckedCount  int      `json:"checkedCount"`
-	RenewedCount  int      `json:"renewedCount"`
-	SkippedCount  int      `json:"skippedCount"`
-	FailedCount   int      `json:"failedCount"`
+	CheckedCount   int      `json:"checkedCount"`
+	RenewedCount   int      `json:"renewedCount"`
+	SkippedCount   int      `json:"skippedCount"`
+	FailedCount    int      `json:"failedCount"`
 	RenewedDomains []string `json:"renewedDomains"`
 }
 

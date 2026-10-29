@@ -33,16 +33,16 @@ var (
 	safeIdentifierRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]{1,64}$`)
 	safeDomainRegex     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\-\.]{1,253}[a-zA-Z0-9]$`)
 	allowedServices     = map[string]bool{
-		"nginx":       true,
-		"powerdns":    true,
-		"postgresql":  true,
-		"mariadb":     true,
-		"php8.3-fpm":  true,
-		"postfix":     true,
-		"dovecot":     true,
-		"rspamd":      true,
-		"fail2ban":    true,
-		"nftables":    true,
+		"nginx":      true,
+		"powerdns":   true,
+		"postgresql": true,
+		"mariadb":    true,
+		"php8.3-fpm": true,
+		"postfix":    true,
+		"dovecot":    true,
+		"rspamd":     true,
+		"fail2ban":   true,
+		"nftables":   true,
 	}
 	allowedServiceActions = map[string]bool{
 		"status":  true,
@@ -177,6 +177,15 @@ func handleAgentRequest(req AgentRequest) AgentResponse {
 			Success: true,
 			Output:  fmt.Sprintf("POSIX user %s configured with dedicated home and namespace jail", username),
 		}
+
+	case "db.list", "db.create", "db.drop", "db.user.create", "db.user.drop", "db.user.password", "db.user.grant":
+		return handleDBCommand(req.Action, req.Params)
+
+	case "backup.create", "backup.list", "backup.verify", "backup.restore":
+		return handleBackupCommand(req.Action, req.Params)
+
+	case "firewall.apply", "firewall.inspect":
+		return handleFirewallCommand(req.Action, req.Params)
 
 	case "cgroups.limit":
 		username := req.Params["username"]

@@ -42,10 +42,10 @@ func TestRecordValidation(t *testing.T) {
 	}
 
 	invalidRecords := []Record{
-		{Name: "@", Type: TypeA, Value: "999.999.999.999", TTL: 3600},   // Invalid IPv4
-		{Name: "@", Type: TypeAAAA, Value: "1.2.3.4", TTL: 3600},          // IPv4 in AAAA
-		{Name: "bad", Type: "UNKNOWN", Value: "1.2.3.4", TTL: 3600},       // Unknown type
-		{Name: "bad", Type: TypeA, Value: "1.2.3.4", TTL: 10},             // TTL too low (< 60)
+		{Name: "@", Type: TypeA, Value: "999.999.999.999", TTL: 3600},           // Invalid IPv4
+		{Name: "@", Type: TypeAAAA, Value: "1.2.3.4", TTL: 3600},                // IPv4 in AAAA
+		{Name: "bad", Type: "UNKNOWN", Value: "1.2.3.4", TTL: 3600},             // Unknown type
+		{Name: "bad", Type: TypeA, Value: "1.2.3.4", TTL: 10},                   // TTL too low (< 60)
 		{Name: "bad", Type: TypeMX, Value: "mail.com", TTL: 3600, Priority: -1}, // Negative priority
 	}
 	for _, r := range invalidRecords {
