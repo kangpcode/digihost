@@ -22,7 +22,8 @@ import {
   Server, 
   FileText,
   Activity,
-  Network
+  Network,
+  Boxes
 } from 'lucide-react';
 import type { UserRole, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
@@ -113,6 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Cpu,
       items: [
         { id: 'runtimes', label: 'Node, Python, Go, PHP', icon: Cpu },
+        { id: 'apps', label: t('navAppMarketplace'), icon: Layers },
       ]
     },
     {
@@ -150,6 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dns', label: t('modalDnsEditorTitle'), icon: Globe },
         { id: 'ssl', label: t('sslManagerTitle'), icon: Shield },
         { id: 'mail', label: t('mailManagerTitle'), icon: Mail },
+        { id: 'apps', label: t('navAppMarketplace'), icon: Boxes },
       ]
     },
     {
@@ -171,6 +174,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'emails', label: t('navEmails'), icon: Mail, category: 'emails' },
     { id: 'mailing_lists', label: t('navMailingLists'), icon: ListFilter, category: 'emails' },
     { id: 'runtimes', label: 'Node, Python, Go, PHP', icon: Cpu, category: 'software' },
+    { id: 'apps', label: t('navAppMarketplace'), icon: Boxes, category: 'software' },
     { id: 'metrics', label: t('navMetrics'), icon: BarChart3, category: 'metrics' },
     { id: 'security', label: t('navSecurity'), icon: Shield, category: 'security' },
     { id: 'software', label: t('navSoftware'), icon: Cpu, category: 'software' },
@@ -305,20 +309,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {userMenuItems
               .filter(item => sidebarSearch === '' || item.label.toLowerCase().includes(sidebarSearch.toLowerCase()))
               .map(item => {
-                const isActive = (item.id === 'home' && activeView === 'home' && selectedCategory === 'all') ||
-                                 (selectedCategory === item.category && item.category !== 'all');
+                const targetView = item.id === 'apps' || item.id === 'wordpress' || item.id === 'software'
+                  ? 'apps'
+                  : item.id === 'runtimes'
+                    ? 'runtimes'
+                    : 'home';
+                const isActive = targetView !== 'home'
+                  ? activeView === targetView
+                  : ((item.id === 'home' && activeView === 'home' && selectedCategory === 'all') ||
+                     (activeView === 'home' && selectedCategory === item.category && item.category !== 'all'));
 
                 return (
                   <button
                     key={item.id}
                     onClick={() => {
                       if (item.id === 'home') {
-                        onViewChange('home');
                         onSelectCategory?.('all');
                       } else {
                         onSelectCategory?.(item.category);
-                        onViewChange('home');
                       }
+                      onViewChange(targetView);
                     }}
                     style={{
                       width: '100%',
