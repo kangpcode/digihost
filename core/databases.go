@@ -105,13 +105,13 @@ func (state *ServerState) handleDatabases(w http.ResponseWriter, r *http.Request
 
 	switch r.Method {
 	case http.MethodGet:
+		if manager == nil || !manager.Configured() {
+			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		username, err := state.loadScopedAccount(r, r.URL.Query().Get("username"))
 		if err != nil {
 			writeAPIError(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		if manager == nil || !manager.Configured() {
-			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		databases, err := manager.ListDatabases(r.Context(), username)
@@ -131,13 +131,13 @@ func (state *ServerState) handleDatabases(w http.ResponseWriter, r *http.Request
 			writeAPIError(w, "Invalid database payload: "+err.Error(), http.StatusBadRequest)
 			return
 		}
+		if manager == nil || !manager.Configured() {
+			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		username, err := state.loadScopedAccount(r, body.Username)
 		if err != nil {
 			writeAPIError(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		if manager == nil || !manager.Configured() {
-			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
 			return
 		}
 
@@ -186,13 +186,13 @@ func (state *ServerState) handleDatabases(w http.ResponseWriter, r *http.Request
 		_ = json.NewEncoder(w).Encode(response)
 
 	case http.MethodDelete:
+		if manager == nil || !manager.Configured() {
+			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		username, err := state.loadScopedAccount(r, r.URL.Query().Get("username"))
 		if err != nil {
 			writeAPIError(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		if manager == nil || !manager.Configured() {
-			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		name := r.URL.Query().Get("name")
@@ -290,13 +290,13 @@ func (state *ServerState) handleDatabaseUsers(w http.ResponseWriter, r *http.Req
 		_ = json.NewEncoder(w).Encode(result)
 
 	case http.MethodDelete:
+		if manager == nil || !manager.Configured() {
+			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		username, err := state.loadScopedAccount(r, r.URL.Query().Get("username"))
 		if err != nil {
 			writeAPIError(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		if manager == nil || !manager.Configured() {
-			writeAPIError(w, db.ErrNotConfigured.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		name := r.URL.Query().Get("name")
