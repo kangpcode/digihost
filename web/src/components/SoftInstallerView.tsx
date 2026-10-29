@@ -845,11 +845,7 @@ export const SoftInstallerView: React.FC<{ language: Language }> = ({ language }
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
                     <Field label={t('appsEngine')}>
-                      <select className="input-glass" value={form.dbEngine} onChange={(event) => updateForm('dbEngine', event.target.value)}>
-                        <option value="">{t('appsServerDefault')}</option>
-                        <option value="mysql">MySQL / MariaDB</option>
-                        <option value="postgres">PostgreSQL</option>
-                      </select>
+                      <input className="input-glass" value={selected.dbEngine || t('appsServerDefault')} readOnly />
                     </Field>
                     <Field label={t('appsDatabaseURL')} hint={t('appsDatabaseURLHint')}>
                       <input className="input-glass" value={form.databaseURL} onChange={(event) => updateForm('databaseURL', event.target.value)} placeholder="127.0.0.1:3306" />

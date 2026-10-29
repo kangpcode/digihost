@@ -306,6 +306,20 @@ func (m *Manager) Install(req InstallRequest) (*InstallResult, error) {
 			req.SiteURL += "/" + req.DomainPath
 		}
 	}
+	if pkg.RequiresDB {
+		if req.DBEngine == "" {
+			req.DBEngine = pkg.DBEngine
+		}
+		if req.DatabaseURL == "" {
+			req.DatabaseURL = m.cfg.DefaultDB.URL
+		}
+		if req.DBAdminUser == "" {
+			req.DBAdminUser = m.cfg.DefaultDB.AdminUser
+		}
+		if req.DBAdminPass == "" {
+			req.DBAdminPass = m.cfg.DefaultDB.AdminPassword
+		}
+	}
 	if err := validateInstallRequest(pkg, req); err != nil {
 		return nil, err
 	}

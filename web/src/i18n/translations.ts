@@ -150,6 +150,7 @@ export const translations = {
     navPreferences: 'Preferences',
     navBilling: 'Billing & Invoices',
     navTerminal: 'Terminal Console',
+    navAppMarketplace: 'Application Marketplace',
 
     // Application Marketplace
     appsPageTitle: 'Application Marketplace',
@@ -721,6 +722,7 @@ export const translations = {
     navPreferences: 'Preferensi Akun',
     navBilling: 'Penagihan & Faktur',
     navTerminal: 'Konsol Terminal SSH',
+    navAppMarketplace: 'Marketplace Aplikasi',
 
     // Application Marketplace
     appsPageTitle: 'Marketplace Aplikasi',

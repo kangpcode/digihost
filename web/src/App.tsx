@@ -11,6 +11,7 @@ import { UserDashboard } from './components/UserDashboard';
 import { ToolsDirectoryView } from './components/ToolsDirectoryView';
 import { BillingLedgerView } from './components/BillingLedgerView';
 import { RuntimesManagerView } from './components/RuntimesManagerView';
+import { SoftInstallerView } from './components/SoftInstallerView';
 import { DnsZoneEditorModal } from './components/DnsZoneEditorModal';
 import { NewAccountModal } from './components/NewAccountModal';
 import { FileManagerModal } from './components/FileManagerModal';
@@ -395,6 +396,11 @@ export const App: React.FC = () => {
                 language={language}
                 onOpenTerminal={() => setIsTerminalOpen(true)}
               />
+            )}
+
+            {/* Application Marketplace (Softaculous-style installer) */}
+            {activeView === 'apps' && (
+              <SoftInstallerView language={language} />
             )}
 
             {/* Billing Engine (Section 7) */}
