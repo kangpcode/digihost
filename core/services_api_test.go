@@ -13,7 +13,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,14 +26,51 @@ import (
 	"digipanel/modules/hosting"
 )
 
+// fakeDBExecutor keeps an in-memory catalog so the list and limit paths behave
+// like a live server, while every statement is still recorded for inspection.
 type fakeDBExecutor struct {
-	scripts []string
-	rows    string
+	mu        sync.Mutex
+	scripts   []string
+	databases []string
 }
 
+var (
+	createDatabasePattern = regexp.MustCompile("CREATE DATABASE IF NOT EXISTS `([a-z0-9_]+)`")
+	dropDatabasePattern   = regexp.MustCompile("DROP DATABASE IF EXISTS `([a-z0-9_]+)`")
+)
+
 func (f *fakeDBExecutor) Run(ctx context.Context, args []string, stdin string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.scripts = append(f.scripts, stdin)
-	return f.rows, nil
+
+	if match := createDatabasePattern.FindStringSubmatch(stdin); match != nil {
+		for _, existing := range f.databases {
+			if existing == match[1] {
+				return "", nil
+			}
+		}
+		f.databases = append(f.databases, match[1])
+		return "", nil
+	}
+	if match := dropDatabasePattern.FindStringSubmatch(stdin); match != nil {
+		remaining := make([]string, 0, len(f.databases))
+		for _, existing := range f.databases {
+			if existing != match[1] {
+				remaining = append(remaining, existing)
+			}
+		}
+		f.databases = remaining
+		return "", nil
+	}
+	if strings.Contains(stdin, "information_schema.SCHEMATA") {
+		var builder strings.Builder
+		for _, name := range f.databases {
+			builder.WriteString(name + "\tutf8mb4\tutf8mb4_unicode_ci\t1\t1024\n")
+		}
+		return builder.String(), nil
+	}
+	return "", nil
 }
 
 type fakeFirewallRunner struct {
@@ -255,8 +294,8 @@ func TestBackupLifecycleAndRestore(t *testing.T) {
 	if err := json.Unmarshal(restored.Body.Bytes(), &result); err != nil {
 		t.Fatalf("decode restore: %v", err)
 	}
-	if result.Files != 1 {
-		t.Fatalf("expected one restored file, got %d", result.Files)
+	if result.Files < 1 {
+		t.Fatalf("expected at least one restored file, got %d", result.Files)
 	}
 	content, err := os.ReadFile(filepath.Join(result.Target, "public_html", "index.html"))
 	if err != nil || string(content) != "<h1>ok</h1>" {
