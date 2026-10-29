@@ -14,7 +14,7 @@ import { NewAccountModal } from './components/NewAccountModal';
 import { FileManagerModal } from './components/FileManagerModal';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { TerminalModal } from './components/TerminalModal';
-import { UserRole, Language, ThemeMode, HostingAccount, ClusterNode, SystemMetrics } from './types';
+import type { UserRole, Language, ThemeMode, HostingAccount, ClusterNode, SystemMetrics } from './types';
 
 export const App: React.FC = () => {
   // Theme and Persona State

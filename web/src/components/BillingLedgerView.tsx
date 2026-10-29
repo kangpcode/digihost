@@ -4,19 +4,16 @@
 import React, { useState } from 'react';
 import { 
   FileText, 
-  CreditCard, 
-  DollarSign, 
   TrendingUp, 
   CheckCircle2, 
   Clock, 
-  Plus, 
   Download,
   BookOpen,
   ArrowUpRight,
   ArrowDownLeft,
   ChevronRight
 } from 'lucide-react';
-import { BillingInvoice, LedgerEntry, Language } from '../types';
+import type { BillingInvoice, LedgerEntry, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
 
 interface BillingLedgerViewProps {
