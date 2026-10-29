@@ -217,6 +217,133 @@ paths:
         '401':
           description: Unauthorized
 
+  /runtimes/apps:
+    get:
+      summary: List supervised runtime applications with live /proc metrics
+      description: Requires permission runtimes.view. Status, PID, CPU, RAM, and uptime are derived from /proc at read time; no stored fabricated values.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Supervised application snapshots
+        '401':
+          description: Missing or invalid bearer token
+    post:
+      summary: Register a new supervised application
+      description: Requires permission runtimes.manage. The runtime version is resolved from the detected host interpreter; caller versions are ignored.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, runtime, path, entryFile, port]
+              properties:
+                name:
+                  type: string
+                runtime:
+                  type: string
+                  enum: [nodejs, python, golang]
+                path:
+                  type: string
+                  description: Absolute application directory
+                entryFile:
+                  type: string
+                  description: Bare filename, no traversal
+                port:
+                  type: integer
+                  minimum: 1024
+                  maximum: 65535
+                environment:
+                  type: string
+                  enum: [production, staging, development]
+      responses:
+        '201':
+          description: Application registered
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+    delete:
+      summary: Remove a stopped application from the registry
+      description: Requires permission runtimes.manage. Refuses running applications. Application source files are never touched.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Registry entry removed
+        '400':
+          description: Missing id or refusal reason
+        '401':
+          description: Unauthorized
+
+  /runtimes/apps/action:
+    post:
+      summary: Start, stop, or restart a supervised application
+      description: Requires permission runtimes.manage. Start compiles Go sources with the host toolchain before spawning; every process runs in its own process group.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appId, action]
+              properties:
+                appId:
+                  type: string
+                action:
+                  type: string
+                  enum: [start, stop, restart]
+      responses:
+        '200':
+          description: Post-action snapshot of the application
+        '400':
+          description: Unknown action or lifecycle refusal
+        '401':
+          description: Unauthorized
+
+  /runtimes/apps/logs:
+    get:
+      summary: Tail the captured stdout and stderr of an application
+      description: Requires permission runtimes.view.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Log lines captured from the application process
+        '400':
+          description: Missing id
+        '401':
+          description: Unauthorized
+
+  /runtimes/detected:
+    get:
+      summary: List runtime binaries and versions detected on this host
+      description: Requires permission runtimes.view.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Map of runtime kind to detected version string
+        '401':
+          description: Unauthorized
+
 components:
   securitySchemes:
     BearerAuth:

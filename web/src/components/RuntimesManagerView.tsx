@@ -13,15 +13,17 @@ import {
   Check, 
   Settings, 
   Sliders,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import type { Language } from '../types';
 import { getTranslation } from '../i18n/translations';
+import { apiFetch } from '../api/client';
 
 interface ManagedApp {
   id: string;
   name: string;
-  runtime: 'nodejs' | 'python' | 'golang' | 'php';
+  runtime: 'nodejs' | 'python' | 'golang';
   version: string;
   path: string;
   entryFile: string;
@@ -32,6 +34,12 @@ interface ManagedApp {
   cpuPercent: number;
   uptime: string;
   environment: string;
+}
+
+interface DetectedRuntimes {
+  nodejs?: string;
+  python?: string;
+  golang?: string;
 }
 
 interface RuntimesManagerViewProps {
@@ -47,9 +55,11 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
 
   const [activeTab, setActiveTab] = useState<'nodejs' | 'python' | 'golang' | 'php'>('nodejs');
   const [apps, setApps] = useState<ManagedApp[]>([]);
+  const [detected, setDetected] = useState<DetectedRuntimes>({});
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAppLogs, setSelectedAppLogs] = useState<ManagedApp | null>(null);
+  const [appLogLines, setAppLogLines] = useState<string[]>([]);
 
   // New App Form State
   const [appName, setAppName] = useState('');
@@ -76,17 +86,18 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
   });
   const [phpSavedNotice, setPhpSavedNotice] = useState(false);
 
-  // Fetch real apps from backend API
+  // Fetch supervised apps and host-detected runtime versions from the API.
   const fetchApps = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/v1/runtimes/apps');
-      if (res.ok) {
-        const data = await res.json();
-        setApps(data);
-      }
-    } catch {
-      // Fallback local memory state
+      const [appsData, detectedData] = await Promise.all([
+        apiFetch<ManagedApp[]>('/api/v1/runtimes/apps'),
+        apiFetch<DetectedRuntimes>('/api/v1/runtimes/detected')
+      ]);
+      setApps(appsData);
+      setDetected(detectedData);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -98,16 +109,39 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
 
   const handleAppAction = async (appId: string, action: 'start' | 'stop' | 'restart') => {
     try {
-      const res = await fetch('/api/v1/runtimes/apps/action', {
+      await apiFetch('/api/v1/runtimes/apps/action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appId, action })
       });
-      if (res.ok) {
-        fetchApps();
-      }
+      fetchApps();
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleDeleteApp = async (appId: string) => {
+    try {
+      await apiFetch(`/api/v1/runtimes/apps?id=${encodeURIComponent(appId)}`, {
+        method: 'DELETE'
+      });
+      fetchApps();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Live logs: streamed from the runtime module's captured stdout/stderr files.
+  const openAppLogs = async (app: ManagedApp) => {
+    try {
+      setSelectedAppLogs(app);
+      setAppLogLines([]);
+      const data = await apiFetch<{ lines: string[] }>(
+        `/api/v1/runtimes/apps/logs?id=${encodeURIComponent(app.id)}`
+      );
+      setAppLogLines(data.lines ?? []);
+    } catch (e) {
+      console.error(e);
+      setAppLogLines(['--- log fetch failed ---']);
     }
   };
 
@@ -115,25 +149,23 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
     e.preventDefault();
     if (!appName) return;
 
+    // The backend resolves the interpreter version from the detected host
+    // binary; the caller never ships a version string.
     try {
-      const res = await fetch('/api/v1/runtimes/apps', {
+      await apiFetch('/api/v1/runtimes/apps', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: appName,
           runtime: activeTab,
-          version: activeTab === 'nodejs' ? '26.8.1' : activeTab === 'python' ? '3.14.7' : '1.27.0',
           path: appPath + appName,
           entryFile: appEntry,
           port: appPort,
           environment: 'production'
         })
       });
-      if (res.ok) {
-        setShowAddModal(false);
-        setAppName('');
-        fetchApps();
-      }
+      setShowAddModal(false);
+      setAppName('');
+      fetchApps();
     } catch (err) {
       console.error(err);
     }
@@ -198,10 +230,10 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
         paddingBottom: '8px'
       }}>
         {[
-          { id: 'nodejs', label: 'Node.js (v26.8.1)', count: apps.filter(a => a.runtime === 'nodejs').length },
-          { id: 'python', label: 'Python (v3.14.7)', count: apps.filter(a => a.runtime === 'python').length },
-          { id: 'golang', label: 'Go (v1.27.0)', count: apps.filter(a => a.runtime === 'golang').length },
-          { id: 'php', label: 'PHP & OPcache (v8.3.32)', count: 1 }
+          { id: 'nodejs', label: `Node.js (v${detected.nodejs ?? '-'})`, count: apps.filter(a => a.runtime === 'nodejs').length },
+          { id: 'python', label: `Python (v${detected.python ?? '-'})`, count: apps.filter(a => a.runtime === 'python').length },
+          { id: 'golang', label: `Go (v${detected.golang ?? '-'})`, count: apps.filter(a => a.runtime === 'golang').length },
+          { id: 'php', label: 'PHP & OPcache (v8.3)', count: 1 }
         ].map(tab => (
           <button
             key={tab.id}
@@ -326,13 +358,23 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
                             <RotateCw size={12} />
                           </button>
                           <button 
-                            onClick={() => setSelectedAppLogs(app)}
+                            onClick={() => openAppLogs(app)}
                             className="btn btn-secondary btn-sm"
                             title={t('rtInspectLogs')}
                             style={{ padding: '4px 8px', fontSize: '0.74rem' }}
                           >
                             {t('rtLogs')}
                           </button>
+                          {app.status !== 'running' && (
+                            <button 
+                              onClick={() => handleDeleteApp(app.id)}
+                              className="btn btn-secondary btn-sm"
+                              title={t('rtDelete')}
+                              style={{ padding: '4px 8px', color: 'var(--status-danger)' }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -384,9 +426,9 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
                     className="input-glass font-mono"
                     style={{ height: '38px' }}
                   >
-                    <option value="8.3">PHP 8.3.32 (Current System Default)</option>
-                    <option value="8.2">PHP 8.2.22</option>
-                    <option value="8.1">PHP 8.1.28</option>
+                    <option value="8.3">PHP 8.3</option>
+                    <option value="8.2">PHP 8.2</option>
+                    <option value="8.1">PHP 8.1</option>
                   </select>
                 </div>
 
@@ -580,11 +622,7 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
               </button>
             </div>
             <pre className="font-mono" style={{ fontSize: '0.78rem', color: '#38bdf8', lineHeight: '1.6', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '8px', maxHeight: '360px', overflowY: 'auto' }}>
-{`[INFO] 2026-10-29 13:45:01 Started supervisor for ${selectedAppLogs.name}
-[INFO] 2026-10-29 13:45:01 Listening on 127.0.0.1:${selectedAppLogs.port} (production)
-[INFO] 2026-10-29 13:45:02 Database connection pool initialized (10 connections)
-[INFO] 2026-10-29 13:46:12 Inbound HTTP GET /health - 200 OK (0.42ms)
-[INFO] 2026-10-29 13:48:44 Process health check passed. Memory: ${selectedAppLogs.memoryMb}MB.`}
+{appLogLines.join('\n') || '...'}
             </pre>
           </div>
         </div>

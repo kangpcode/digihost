@@ -27,6 +27,7 @@ import (
 	"digipanel/modules/dns"
 	"digipanel/modules/hosting"
 	"digipanel/modules/mail"
+	"digipanel/modules/runtimes"
 	"digipanel/modules/ssl"
 )
 
@@ -66,23 +67,6 @@ type SystemTelemetry struct {
 		GoVersion     string `json:"goVersion"`
 		PHPVersion    string `json:"phpVersion"`
 	} `json:"runtimesDetected"`
-}
-
-type ManagedApp struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Runtime     string    `json:"runtime"` // nodejs, python, golang, php
-	Version     string    `json:"version"`
-	Path        string    `json:"path"`
-	EntryFile   string    `json:"entryFile"`
-	Port        int       `json:"port"`
-	Status      string    `json:"status"` // running, stopped, building, error
-	PID         int       `json:"pid"`
-	MemoryMb    float64   `json:"memoryMb"`
-	CPUPercent  float64   `json:"cpuPercent"`
-	Uptime      string    `json:"uptime"`
-	Environment string    `json:"environment"`
-	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type FileItem struct {
@@ -137,17 +121,17 @@ type ServerState struct {
 	mu           sync.RWMutex
 	StorageDir   string
 	ModulesDir   string
-	Users        map[string]*UserAccount
-	Apps         []ManagedApp
-	DnsRecords   []DnsRecord
-	AuditLogger    *audit.Logger
-	TaskQueue      *queue.QueueEngine
-	HostingManager *hosting.Manager
-	DNSManager     *dns.Manager
-	SSLManager     *ssl.Manager
-	MailManager    *mail.Manager
-	LedgerItems    []LedgerEntry
-	ClusterNodes   []ClusterNode
+	Users           map[string]*UserAccount
+	AuditLogger     *audit.Logger
+	TaskQueue       *queue.QueueEngine
+	HostingManager  *hosting.Manager
+	DNSManager      *dns.Manager
+	SSLManager      *ssl.Manager
+	MailManager     *mail.Manager
+	RuntimesManager *runtimes.Manager
+	DnsRecords      []DnsRecord
+	LedgerItems     []LedgerEntry
+	ClusterNodes    []ClusterNode
 }
 
 var safeTerminalBinaries = map[string]bool{
@@ -172,6 +156,12 @@ var publicRoutes = map[string]bool{
 }
 
 var routeRequiredPermissions = map[string]string{
+	"GET /api/v1/runtimes/apps":              "runtimes.view",
+	"GET /api/v1/runtimes/apps/logs":          "runtimes.view",
+	"GET /api/v1/runtimes/detected":           "runtimes.view",
+	"POST /api/v1/runtimes/apps":              "runtimes.manage",
+	"POST /api/v1/runtimes/apps/action":       "runtimes.manage",
+	"DELETE /api/v1/runtimes/apps":            "runtimes.manage",
 	"GET /api/v1/cluster/fleet":              "system.fleet.read",
 	"POST /api/v1/hosting/accounts":          "accounts.create",
 	"POST /api/v1/hosting/accounts/suspend":   "accounts.suspend",
@@ -209,6 +199,7 @@ func initStorage(state *ServerState) {
 		filepath.Join(state.StorageDir, "vhosts", "testuser", "logs"),
 		filepath.Join(state.StorageDir, "dns"),
 		filepath.Join(state.StorageDir, "billing"),
+		filepath.Join(state.StorageDir, "runtimes"),
 	}
 	for _, d := range dirs {
 		_ = os.MkdirAll(d, 0755)
@@ -269,6 +260,7 @@ echo "DigiPanel Native PHP Engine: " . phpversion();
 	state.DNSManager = dns.NewManager()
 	state.SSLManager = ssl.NewManager(filepath.Join(state.StorageDir, "ssl"))
 	state.MailManager = mail.NewManager("103.189.201.42")
+	state.RuntimesManager = runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
 
 	// Seed testuser account in hosting manager
 	_, _ = state.HostingManager.CreateAccount(hosting.CreateAccountRequest{
@@ -323,58 +315,7 @@ echo "DigiPanel Native PHP Engine: " . phpversion();
 		},
 	}
 
-	state.Apps = []ManagedApp{
-		{
-			ID:          "app-node-1",
-			Name:        "api-gateway-service",
-			Runtime:     "nodejs",
-			Version:     "26.8.1",
-			Path:        filepath.Join(state.StorageDir, "apps", "api-gateway"),
-			EntryFile:   "index.js",
-			Port:        3001,
-			Status:      "running",
-			PID:         14280,
-			MemoryMb:    48.2,
-			CPUPercent:  0.4,
-			Uptime:      "6 days 14 hours",
-			Environment: "production",
-			CreatedAt:   time.Now().Add(-6 * 24 * time.Hour),
-		},
-		{
-			ID:          "app-python-1",
-			Name:        "ai-inference-fastapi",
-			Runtime:     "python",
-			Version:     "3.14.7",
-			Path:        filepath.Join(state.StorageDir, "apps", "ai-inference"),
-			EntryFile:   "main.py",
-			Port:        8000,
-			Status:      "running",
-			PID:         15102,
-			MemoryMb:    92.5,
-			CPUPercent:  1.2,
-			Uptime:      "2 days 8 hours",
-			Environment: "production",
-			CreatedAt:   time.Now().Add(-2 * 24 * time.Hour),
-		},
-		{
-			ID:          "app-go-1",
-			Name:        "digipanel-dns-sync",
-			Runtime:     "golang",
-			Version:     "1.27.0",
-			Path:        filepath.Join(state.StorageDir, "apps", "dns-sync"),
-			EntryFile:   "main.go",
-			Port:        5353,
-			Status:      "running",
-			PID:         16044,
-			MemoryMb:    18.4,
-			CPUPercent:  0.1,
-			Uptime:      "12 days 1 hour",
-			Environment: "production",
-			CreatedAt:   time.Now().Add(-12 * 24 * time.Hour),
-		},
-	}
-
-	state.DnsRecords = []DnsRecord{
+state.DnsRecords = []DnsRecord{
 		{ID: "rec-1", Domain: "digipanel.live", Type: "A", Name: "@", Content: "103.189.201.42", TTL: 300},
 		{ID: "rec-2", Domain: "digipanel.live", Type: "A", Name: "panel", Content: "103.189.201.42", TTL: 300},
 		{ID: "rec-3", Domain: "digipanel.live", Type: "CNAME", Name: "www", Content: "digipanel.live", TTL: 3600},
@@ -839,40 +780,121 @@ func NewServerHandler(state *ServerState) http.Handler {
 		_ = json.NewEncoder(w).Encode(map[string]bool{"terminated": true})
 	})
 
-	// 8. Runtime App Manager (Protected)
+	// 8. Runtime App Manager (Protected - runtimes.view / runtimes.manage)
+	// All supervision flows into the native runtimes module: real processes,
+	// real /proc metrics. No fabricated PID, memory, or status values.
 	mux.HandleFunc("/api/v1/runtimes/apps", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			state.mu.RLock()
-			apps := state.Apps
-			state.mu.RUnlock()
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(apps)
-			return
-		}
+		w.Header().Set("Content-Type", "application/json")
 
-		if r.Method == "POST" {
-			var newApp ManagedApp
-			if err := json.NewDecoder(r.Body).Decode(&newApp); err != nil {
+		switch r.Method {
+		case "GET":
+			_ = json.NewEncoder(w).Encode(state.RuntimesManager.List())
+		case "POST":
+			var req runtimes.CreateAppRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "Bad request", http.StatusBadRequest)
 				return
 			}
-			newApp.ID = fmt.Sprintf("app-%d", time.Now().UnixNano())
-			newApp.Status = "running"
-			newApp.PID = 10000 + int(time.Now().Unix()%20000)
-			newApp.MemoryMb = 24.5
-			newApp.CPUPercent = 0.2
-			newApp.Uptime = "1 min"
-			newApp.CreatedAt = time.Now()
-
-			state.mu.Lock()
-			state.Apps = append(state.Apps, newApp)
-			state.mu.Unlock()
-
-			w.Header().Set("Content-Type", "application/json")
+			app, err := state.RuntimesManager.CreateApp(req)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			state.AuditLogger.Append("admin", "runtimes.app.create", "runtime_app", app.ID, fmt.Sprintf(`{"name":%q,"runtime":%q,"port":%d}`, app.Name, app.Runtime, app.Port), r.RemoteAddr)
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(newApp)
+			_ = json.NewEncoder(w).Encode(app)
+		case "DELETE":
+			appID := r.URL.Query().Get("id")
+			if appID == "" {
+				http.Error(w, "Missing application id", http.StatusBadRequest)
+				return
+			}
+			if err := state.RuntimesManager.Delete(appID); err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			state.AuditLogger.Append("admin", "runtimes.app.delete", "runtime_app", appID, `{}`, r.RemoteAddr)
+			_ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Runtime application lifecycle actions: start, stop, restart.
+	mux.HandleFunc("/api/v1/runtimes/apps/action", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		var req struct {
+			AppID  string `json:"appId"`
+			Action string `json:"action"` // start, stop, restart
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		var (
+			snap *runtimes.Snapshot
+			err  error
+		)
+		switch req.Action {
+		case "start":
+			snap, err = state.RuntimesManager.Start(req.AppID)
+		case "stop":
+			err = state.RuntimesManager.Stop(req.AppID)
+		case "restart":
+			snap, err = state.RuntimesManager.Restart(req.AppID)
+		default:
+			http.Error(w, "Unknown action", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		state.AuditLogger.Append("admin", "runtimes.app."+req.Action, "runtime_app", req.AppID, `{}`, r.RemoteAddr)
+		if snap == nil {
+			snap, err = state.RuntimesManager.Snapshot(req.AppID)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode(snap)
+	})
+
+	// Captured stdout/stderr of a supervised application.
+	mux.HandleFunc("/api/v1/runtimes/apps/logs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		appID := r.URL.Query().Get("id")
+		if appID == "" {
+			http.Error(w, "Missing application id", http.StatusBadRequest)
+			return
+		}
+		lines, err := state.RuntimesManager.Logs(appID, 200)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": appID, "lines": lines})
+	})
+
+	// Interpreter binaries and versions detected on this host.
+	mux.HandleFunc("/api/v1/runtimes/detected", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		detected := state.RuntimesManager.DetectedRuntimes()
+		_ = json.NewEncoder(w).Encode(detected)
 	})
 
 	// 9. Double-Entry Billing Ledger (Protected - billing.ledger.read)
