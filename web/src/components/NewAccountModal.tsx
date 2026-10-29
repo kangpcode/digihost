@@ -36,9 +36,10 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
   const [plan, setPlan] = useState('');
   const [phpVersion, setPhpVersion] = useState('');
   const [packages, setPackages] = useState<PackageOption[]>([]);
+  const [panelPassword, setPanelPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [created, setCreated] = useState<ApiAccount | null>(null);
+  const [created, setCreated] = useState<{ account: ApiAccount; panelUsername: string; initialPassword: string } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -71,20 +72,25 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
     setIsSubmitting(true);
     setError('');
     try {
-      const account = await apiFetch<ApiAccount>('/api/v1/hosting/accounts', {
-        method: 'POST',
-        body: JSON.stringify({
-          tenantId: 'tenant-default',
-          username,
-          domain,
-          package: plan,
-          phpVersion: phpVersion || undefined
-        })
-      });
-      setCreated(account);
-      onAccountCreated(account);
+      const result = await apiFetch<{ account: ApiAccount; panelUsername: string; panelLoginReady: boolean; initialPassword: string }>(
+        '/api/v1/hosting/accounts',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            tenantId: 'tenant-default',
+            username,
+            domain,
+            package: plan,
+            phpVersion: phpVersion || undefined,
+            panelPassword: panelPassword || undefined
+          })
+        }
+      );
+      setCreated({ account: result.account, panelUsername: result.panelUsername, initialPassword: result.initialPassword });
+      onAccountCreated(result.account);
       setDomain('');
       setUsername('');
+      setPanelPassword('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -129,9 +135,21 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
           <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', borderColor: 'rgba(16, 185, 129, 0.35)' }}>
             <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>{t('newAccSuccess')}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {created.username} &middot; {created.primaryDomain} &middot; {created.packageId}
+              {created.account.username} &middot; {created.account.primaryDomain} &middot; {created.account.packageId}
             </div>
-            <div className="font-mono" style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>{created.documentRoot}</div>
+            <div className="font-mono" style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>{created.account.documentRoot}</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              {t('newAccPanelLogin')}: <strong>{created.panelUsername}</strong>
+            </div>
+            {created.initialPassword ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{t('newAccInitialPassword')}</span>
+                <code className="font-mono" style={{ fontSize: '0.82rem', padding: '8px 10px', borderRadius: '8px', background: 'rgba(148, 163, 184, 0.14)' }}>
+                  {created.initialPassword}
+                </code>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>{t('newAccInitialPasswordHint')}</span>
+              </div>
+            ) : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>{t('close')}</button>
             </div>
@@ -191,6 +209,19 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
                 />
               </label>
             </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {t('newAccClientPassword')}
+              <input
+                className="input-glass"
+                type="password"
+                value={panelPassword}
+                onChange={(event) => setPanelPassword(event.target.value)}
+                autoComplete="new-password"
+                minLength={10}
+                placeholder={t('newAccClientPasswordPh')}
+              />
+            </label>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
               <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isSubmitting}>

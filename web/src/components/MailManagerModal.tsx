@@ -385,7 +385,7 @@ export const MailManagerModal: React.FC<MailManagerModalProps> = ({
                 </label>
                 <input 
                   type="email"
-                  placeholder="user@testuser.digipanel.live"
+                  placeholder="user@example-domain.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   className="input-glass"

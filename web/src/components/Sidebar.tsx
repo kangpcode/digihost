@@ -109,6 +109,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Server,
       items: [
         { id: 'server_status', label: t('navServerStatus'), icon: Activity },
+        { id: 'dns', label: t('modalDnsEditorTitle'), icon: Globe },
+        { id: 'ssl', label: t('sslManagerTitle'), icon: Shield },
+        { id: 'mail', label: t('mailManagerTitle'), icon: Mail },
+        { id: 'files', label: t('navFiles'), icon: Folder },
         { id: 'access_logs', label: t('navAccessLogs'), icon: FileText },
         { id: 'audit', label: t('auditTitle'), icon: Shield },
       ]

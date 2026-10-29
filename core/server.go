@@ -1098,21 +1098,69 @@ func NewServerHandler(state *ServerState) http.Handler {
 		}
 
 		if r.Method == "POST" {
-			var req hosting.CreateAccountRequest
-			if err := decodeJSONBody(w, r, &req); err != nil {
+			var body struct {
+				hosting.CreateAccountRequest
+				PanelPassword string `json:"panelPassword"`
+			}
+			if err := decodeJSONBody(w, r, &body); err != nil {
 				writeAPIError(w, "Invalid account payload: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-			acc, err := state.HostingManager.CreateAccount(req)
+
+			username := strings.ToLower(strings.TrimSpace(body.Username))
+			// A single panel identity owns each account. Refuse before provisioning
+			// so no orphaned hosting record is left behind.
+			state.mu.RLock()
+			_, panelExists := state.Users[username]
+			state.mu.RUnlock()
+			if panelExists {
+				writeAPIError(w, "A panel identity already uses this username", http.StatusConflict)
+				return
+			}
+
+			acc, err := state.HostingManager.CreateAccount(body.CreateAccountRequest)
 			if err != nil {
 				writeAPIError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+
+			clientAddress := clientIP(r, state.TrustedProxies)
+			createdLogin := false
+			initialPassword := ""
+			// Client logins are provisioned by administrators only until reseller
+			// ownership scoping is enforced on the account collection.
+			if session.Role == rbac.RoleAdmin {
+				password := strings.TrimSpace(body.PanelPassword)
+				if password == "" {
+					generated, genErr := generatePassword(18)
+					if genErr != nil {
+						_ = state.HostingManager.TerminateAccount(acc.Username)
+						writeAPIError(w, "Unable to generate a client password", http.StatusInternalServerError)
+						return
+					}
+					password = generated
+					initialPassword = generated
+				}
+				if err := state.createUser(acc.Username, password, rbac.RoleUser, ""); err != nil {
+					_ = state.HostingManager.TerminateAccount(acc.Username)
+					writeAPIError(w, "Account rolled back, panel login rejected: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				createdLogin = true
+				state.AuditLogger.Append(session.Username, "users.create", "user", acc.Username,
+					`{"role":"user","source":"account.create"}`, clientAddress)
+			}
+
 			state.AuditLogger.Append(session.Username, "account.create", "account", acc.Username,
-				fmt.Sprintf(`{"domain":%q,"package":%q}`, acc.PrimaryDomain, acc.PackageID), clientIP(r, state.TrustedProxies))
+				fmt.Sprintf(`{"domain":%q,"package":%q,"panelLogin":%t}`, acc.PrimaryDomain, acc.PackageID, createdLogin), clientAddress)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(acc)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"account":         acc,
+				"panelUsername":   acc.Username,
+				"panelLoginReady": createdLogin,
+				"initialPassword": initialPassword,
+			})
 			return
 		}
 

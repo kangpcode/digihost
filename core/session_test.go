@@ -200,6 +200,93 @@ func TestUserRoleCannotCreateUsers(t *testing.T) {
 	}
 }
 
+func TestAccountCreationProvisionsClientLogin(t *testing.T) {
+	state, handler := setupIntegratedTestServer()
+	admin := adminToken(t, handler)
+
+	createAccount := func(body map[string]string) *httptest.ResponseRecorder {
+		payload, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/hosting/accounts", bytes.NewReader(payload))
+		req.Header.Set("Authorization", "Bearer "+admin)
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	withPassword := createAccount(map[string]string{
+		"username":      "login_client",
+		"domain":        "login-client.test",
+		"package":       "starter",
+		"panelPassword": "ClientLogin2026!",
+	})
+	if withPassword.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating account with client login, got %d: %s", withPassword.Code, withPassword.Body.String())
+	}
+	var created struct {
+		Account struct {
+			Username string `json:"username"`
+		} `json:"account"`
+		PanelUsername   string `json:"panelUsername"`
+		PanelLoginReady bool   `json:"panelLoginReady"`
+		InitialPassword string `json:"initialPassword"`
+	}
+	if err := json.Unmarshal(withPassword.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode creation response: %v", err)
+	}
+	if !created.PanelLoginReady || created.PanelUsername != "login_client" {
+		t.Fatalf("panel login was not provisioned: %+v", created)
+	}
+	if created.InitialPassword != "" {
+		t.Fatalf("caller supplied password must not be echoed back, got %q", created.InitialPassword)
+	}
+
+	clientToken := login(t, handler, "login_client", "ClientLogin2026!")
+	profile, _ := http.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	profile.Header.Set("Authorization", "Bearer "+clientToken)
+	profileRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(profileRecorder, profile)
+	var me struct {
+		Role string `json:"role"`
+	}
+	_ = json.NewDecoder(profileRecorder.Body).Decode(&me)
+	if me.Role != "user" {
+		t.Fatalf("client login must hold the user role, got %q", me.Role)
+	}
+
+	// The generated path issues a one-time password that actually authenticates.
+	generated := createAccount(map[string]string{
+		"username": "generated_client",
+		"domain":   "generated-client.test",
+		"package":  "starter",
+	})
+	if generated.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating account with generated password, got %d: %s", generated.Code, generated.Body.String())
+	}
+	var generatedBody struct {
+		InitialPassword string `json:"initialPassword"`
+	}
+	_ = json.Unmarshal(generated.Body.Bytes(), &generatedBody)
+	if len(generatedBody.InitialPassword) < 10 {
+		t.Fatalf("expected a generated initial password, got %q", generatedBody.InitialPassword)
+	}
+	login(t, handler, "generated_client", generatedBody.InitialPassword)
+
+	// The username is taken, so a second account with the same name is refused
+	// before provisioning rather than leaving the hosting tree half created.
+	duplicate := createAccount(map[string]string{
+		"username": "login_client",
+		"domain":   "duplicate-client.test",
+		"package":  "starter",
+	})
+	if duplicate.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for a duplicate panel username, got %d", duplicate.Code)
+	}
+	if _, err := state.HostingManager.GetAccount("login_client"); err != nil {
+		t.Fatalf("original account disappeared: %v", err)
+	}
+}
+
 func TestClientRoleIsConfinedToOwnAccount(t *testing.T) {
 	state, handler := setupIntegratedTestServer()
 

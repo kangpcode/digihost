@@ -1,36 +1,57 @@
-// DigiPanel Tools Directory View (Matching Image 4 - cPanel Tools Layout)
-// Zero emojis, strictly Lucide SVG iconography, modern glass styling
+// DigiPanel Tools Directory.
+// Every entry below opens a capability that is implemented in this build and
+// backed by the core API. Tools that do not exist yet are not listed, so no
+// button on this screen is inert.
 
-import React, { useState } from 'react';
-import { 
-  Mail, 
-  Folder, 
-  Database, 
-  Globe, 
-  BarChart3, 
-  Shield, 
-  Cpu, 
-  Terminal, 
-  Search, 
+import React, { useMemo, useState } from 'react';
+import {
+  Mail,
+  Folder,
+  Database,
+  Globe,
+  BarChart3,
+  Shield,
+  Cpu,
+  Terminal,
+  Search,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Layers,
+  FileText,
+  ClipboardList
 } from 'lucide-react';
 import type { Language } from '../types';
 import { getTranslation } from '../i18n/translations';
 
+export type ToolsTarget =
+  | 'dns'
+  | 'ssl'
+  | 'mail'
+  | 'files'
+  | 'apps'
+  | 'runtimes'
+  | 'access_logs'
+  | 'billing'
+  | 'server_status'
+  | 'accounts_list'
+  | 'plans'
+  | 'audit'
+  | 'terminal';
+
 interface ToolsDirectoryViewProps {
   language: Language;
-  onOpenDns: () => void;
-  onOpenFiles: () => void;
-  onOpenTerminal: () => void;
+  onNavigate: (target: ToolsTarget) => void;
   searchFilter?: string;
+}
+
+interface ToolEntry {
+  name: string;
+  target: ToolsTarget;
 }
 
 export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
   language,
-  onOpenDns,
-  onOpenFiles,
-  onOpenTerminal,
+  onNavigate,
   searchFilter = ''
 }) => {
   const t = (key: any) => getTranslation(language, key);
@@ -39,132 +60,121 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const toggleCategory = (cat: string) => {
-    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+    setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  const toolSections = [
-    {
-      id: 'email',
-      title: t('catEmail'),
-      icon: Mail,
-      tools: [
-        { name: t('toolEmailAccounts'), action: () => {} },
-        { name: t('toolForwarders'), action: () => {} },
-        { name: t('toolEmailRouting'), action: () => {} },
-        { name: t('toolAutoresponders'), action: () => {} },
-        { name: t('toolDefaultAddress'), action: () => {} },
-        { name: t('toolMailingLists'), action: () => {} },
-        { name: t('toolTrackDelivery'), action: () => {} },
-        { name: t('toolGlobalEmailFilters'), action: () => {} },
-        { name: t('toolEmailFilters'), action: () => {} },
-        { name: t('toolEmailDeliverability'), action: () => {} },
-        { name: t('toolAddressImporter'), action: () => {} },
-        { name: t('toolSpamFilters'), action: () => {} },
-        { name: t('toolEncryption'), action: () => {} },
-        { name: t('toolBoxTrapper'), action: () => {} },
-        { name: t('toolCalendarContacts'), action: () => {} },
-        { name: t('toolEmailDiskUsage'), action: () => {} }
-      ]
-    },
-    {
-      id: 'files',
-      title: t('catFiles'),
-      icon: Folder,
-      tools: [
-        { name: t('toolFileManager'), action: onOpenFiles },
-        { name: t('toolImages'), action: onOpenFiles },
-        { name: t('toolDirectoryPrivacy'), action: () => {} },
-        { name: t('toolDiskUsage'), action: () => {} },
-        { name: t('toolWebDisk'), action: () => {} },
-        { name: t('toolBackup'), action: () => {} },
-        { name: t('toolBackupWizard'), action: () => {} },
-        { name: t('toolGitVersionControl'), action: onOpenTerminal },
-        { name: t('toolFileRestoration'), action: () => {} }
-      ]
-    },
-    {
-      id: 'databases',
-      title: t('catDatabases'),
-      icon: Database,
-      tools: [
-        { name: t('toolPhpMyAdmin'), action: () => {} },
-        { name: t('toolMysqlDatabases'), action: () => {} },
-        { name: t('toolMysqlWizard'), action: () => {} },
-        { name: t('toolRemoteMysql'), action: () => {} },
-        { name: t('toolPostgresManager'), action: () => {} },
-        { name: t('toolPostgresWizard'), action: () => {} }
-      ]
-    },
-    {
-      id: 'domains',
-      title: t('catDomains'),
-      icon: Globe,
-      tools: [
-        { name: t('toolDomains'), action: onOpenDns },
-        { name: t('toolSubdomains'), action: onOpenDns },
-        { name: t('toolAliases'), action: onOpenDns },
-        { name: t('toolRedirects'), action: onOpenDns },
-        { name: t('toolZoneEditor'), action: onOpenDns },
-        { name: t('toolCloudflare'), action: onOpenDns },
-        { name: t('toolDnsHealth'), action: onOpenDns }
-      ]
-    },
-    {
-      id: 'metrics',
-      title: t('catMetrics'),
-      icon: BarChart3,
-      tools: [
-        { name: t('toolVisitorsLog'), action: () => {} },
-        { name: t('toolHttpErrors'), action: () => {} },
-        { name: t('toolBandwidthBreakdown'), action: () => {} },
-        { name: t('toolRawAccessLogs'), action: onOpenTerminal },
-        { name: t('toolAwstatsAnalytics'), action: () => {} },
-        { name: t('toolCpuUsage'), action: () => {} }
-      ]
-    },
-    {
-      id: 'security',
-      title: t('catSecurity'),
-      icon: Shield,
-      tools: [
-        { name: t('toolSshAccess'), action: onOpenTerminal },
-        { name: t('toolIpBlocker'), action: () => {} },
-        { name: t('toolSslCertificates'), action: onOpenDns },
-        { name: t('toolApiTokens'), action: () => {} },
-        { name: t('toolHotlinkProtection'), action: () => {} },
-        { name: t('toolModSecurity'), action: () => {} },
-        { name: t('toolTwoFactor'), action: () => {} }
-      ]
-    },
-    {
-      id: 'software',
-      title: t('catSoftware'),
-      icon: Cpu,
-      tools: [
-        { name: t('toolWordPressToolkit'), action: () => {} },
-        { name: t('toolPhpSelector'), action: () => {} },
-        { name: t('toolNodeManager'), action: () => {} },
-        { name: t('toolPythonAppSetup'), action: () => {} },
-        { name: t('toolOptimizeWebsite'), action: () => {} }
-      ]
-    },
-    {
-      id: 'advanced',
-      title: t('catAdvanced'),
-      icon: Terminal,
-      tools: [
-        { name: t('navTerminal'), action: onOpenTerminal },
-        { name: t('toolCronJobs'), action: () => {} },
-        { name: t('toolTrackDns'), action: onOpenDns },
-        { name: t('toolHandlers'), action: () => {} },
-        { name: t('toolMimeTypes'), action: () => {} }
-      ]
-    }
-  ];
+  const toolSections = useMemo<Array<{ id: string; title: string; icon: typeof Mail; tools: ToolEntry[] }>>(
+    () => [
+      {
+        id: 'domains',
+        title: t('catDomains'),
+        icon: Globe,
+        tools: [
+          { name: t('toolZoneEditor'), target: 'dns' },
+          { name: t('toolSslCertificates'), target: 'ssl' }
+        ]
+      },
+      {
+        id: 'files',
+        title: t('catFiles'),
+        icon: Folder,
+        tools: [
+          { name: t('toolFileManager'), target: 'files' },
+          { name: t('toolFileRestoration'), target: 'files' }
+        ]
+      },
+      {
+        id: 'databases',
+        title: t('catDatabases'),
+        icon: Database,
+        tools: [
+          { name: t('toolMysqlDatabases'), target: 'runtimes' },
+          { name: t('toolPostgresManager'), target: 'runtimes' }
+        ]
+      },
+      {
+        id: 'email',
+        title: t('catEmail'),
+        icon: Mail,
+        tools: [
+          { name: t('toolEmailAccounts'), target: 'mail' },
+          { name: t('toolForwarders'), target: 'mail' },
+          { name: t('toolSpamFilters'), target: 'mail' }
+        ]
+      },
+      {
+        id: 'metrics',
+        title: t('catMetrics'),
+        icon: BarChart3,
+        tools: [
+          { name: t('toolRawAccessLogs'), target: 'access_logs' },
+          { name: t('toolHttpErrors'), target: 'access_logs' },
+          { name: t('toolCpuUsage'), target: 'server_status' }
+        ]
+      },
+      {
+        id: 'security',
+        title: t('catSecurity'),
+        icon: Shield,
+        tools: [
+          { name: t('auditTitle'), target: 'audit' },
+          { name: t('toolSslCertificates'), target: 'ssl' },
+          { name: t('toolSshAccess'), target: 'terminal' }
+        ]
+      },
+      {
+        id: 'software',
+        title: t('catSoftware'),
+        icon: Cpu,
+        tools: [
+          { name: t('navAppMarketplace'), target: 'apps' },
+          { name: t('navRuntimes'), target: 'runtimes' },
+          { name: t('toolPhpSelector'), target: 'runtimes' }
+        ]
+      },
+      {
+        id: 'advanced',
+        title: t('catAdvanced'),
+        icon: Terminal,
+        tools: [
+          { name: t('navTerminal'), target: 'terminal' }
+        ]
+      },
+      {
+        id: 'panel',
+        title: t('toolsPanelSection'),
+        icon: Layers,
+        tools: [
+          { name: t('actionAllAccounts'), target: 'accounts_list' },
+          { name: t('thPlan'), target: 'plans' },
+          { name: t('navBilling'), target: 'billing' },
+          { name: t('navHubDashboard'), target: 'server_status' }
+        ]
+      },
+      {
+        id: 'logs',
+        title: t('catLogs'),
+        icon: ClipboardList,
+        tools: [
+          { name: t('navAccessLogs'), target: 'access_logs' },
+          { name: t('auditTitle'), target: 'audit' }
+        ]
+      },
+      {
+        id: 'billing',
+        title: t('navBilling'),
+        icon: FileText,
+        tools: [
+          { name: t('billingTabInvoices'), target: 'billing' },
+          { name: t('billingTabLedger'), target: 'billing' }
+        ]
+      }
+    ],
+    [language]
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Title & Filter */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
@@ -177,7 +187,7 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
 
         <div style={{ width: '320px', position: 'relative' }}>
           <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input 
+          <input
             type="text"
             placeholder={t('toolsFilterPh')}
             value={filterText}
@@ -188,11 +198,10 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
         </div>
       </div>
 
-      {/* Sections List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-        {toolSections.map(sec => {
-          const matchingTools = sec.tools.filter(t => 
-            filterText === '' || t.name.toLowerCase().includes(filterText.toLowerCase())
+        {toolSections.map((sec) => {
+          const matchingTools = sec.tools.filter(
+            (tool) => filterText === '' || tool.name.toLowerCase().includes(filterText.toLowerCase())
           );
 
           if (matchingTools.length === 0) return null;
@@ -201,7 +210,7 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
 
           return (
             <div key={sec.id} className="glass-panel" style={{ padding: '20px 24px' }}>
-              <div 
+              <div
                 onClick={() => toggleCategory(sec.id)}
                 style={{
                   display: 'flex',
@@ -229,10 +238,11 @@ export const ToolsDirectoryView: React.FC<ToolsDirectoryViewProps> = ({
                   gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
                   gap: '12px'
                 }}>
-                  {matchingTools.map((tool, idx) => (
+                  {matchingTools.map((tool) => (
                     <button
-                      key={idx}
-                      onClick={tool.action}
+                      key={`${sec.id}-${tool.name}`}
+                      type="button"
+                      onClick={() => onNavigate(tool.target)}
                       className="glass-card"
                       style={{
                         padding: '12px 14px',

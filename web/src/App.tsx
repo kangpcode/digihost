@@ -15,7 +15,6 @@ import { SoftInstallerView } from './components/SoftInstallerView';
 import { DnsZoneEditorModal } from './components/DnsZoneEditorModal';
 import { NewAccountModal } from './components/NewAccountModal';
 import { FileManagerModal } from './components/FileManagerModal';
-import { WhatsAppModal } from './components/WhatsAppModal';
 import { TerminalModal } from './components/TerminalModal';
 import { ResellerDashboard } from './components/ResellerDashboard';
 import { SslManagerModal } from './components/SslManagerModal';
@@ -97,7 +96,6 @@ export const App: React.FC = () => {
   const [isDnsEditorOpen, setIsDnsEditorOpen] = useState(false);
   const [isNewAccountOpen, setIsNewAccountOpen] = useState(false);
   const [isFileManagerOpen, setIsFileManagerOpen] = useState(false);
-  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isSslManagerOpen, setIsSslManagerOpen] = useState(false);
   const [isMailManagerOpen, setIsMailManagerOpen] = useState(false);
@@ -239,6 +237,11 @@ export const App: React.FC = () => {
     if (view === 'files') { setIsFileManagerOpen(true); return; }
     if (view === 'advanced') { setActiveView('access_logs'); return; }
     setActiveView(view);
+  };
+
+  const handleToolTarget = (target: string) => {
+    if (target === 'terminal') { setIsTerminalOpen(true); return; }
+    handleViewChange(target);
   };
 
   const handleSignedIn = () => {
@@ -460,19 +463,9 @@ export const App: React.FC = () => {
             {activeView === 'tools' && (
               <ToolsDirectoryView
                 language={language}
-                onOpenDns={() => setIsDnsEditorOpen(true)}
-                onOpenFiles={() => setIsFileManagerOpen(true)}
-                onOpenTerminal={() => setIsTerminalOpen(true)}
+                onNavigate={handleToolTarget}
                 searchFilter={searchQuery}
               />
-            )}
-
-            {activeView === 'whatsapp' && (
-              <div className="glass-panel" style={{ padding: '24px' }}>
-                <button type="button" className="btn btn-primary" onClick={() => setIsWhatsAppOpen(true)}>
-                  {t('connect')}
-                </button>
-              </div>
             )}
           </div>
         </main>
@@ -496,12 +489,6 @@ export const App: React.FC = () => {
         onClose={() => setIsFileManagerOpen(false)}
         language={language}
         account={activeAccount}
-      />
-
-      <WhatsAppModal
-        isOpen={isWhatsAppOpen}
-        onClose={() => setIsWhatsAppOpen(false)}
-        language={language}
       />
 
       <TerminalModal
