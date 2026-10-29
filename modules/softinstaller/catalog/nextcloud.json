@@ -1,0 +1,101 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "zip",
+  "configKind": "none",
+  "id": "nextcloud",
+  "name": "Nextcloud",
+  "category": "Collaboration",
+  "latestVersion": "33.0.10",
+  "description": "Self-hosted file sync and collaboration platform.",
+  "homepage": "https://nextcloud.com",
+  "downloadURL": "https://download.nextcloud.com/server/releases/nextcloud-33.0.10.zip",
+  "stripPrefix": "nextcloud/",
+  "pinnedSHA256": "ff602a1f1ba202f2137f10eecd201d3e80c5d94fd17ab984c688fb1bcb290645",
+  "dbEngine": "mysql",
+  "adminPath": "/settings/admin",
+  "completionMode": "automatic",
+  "dataDirName": "data",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "pdo_mysql",
+      "ctype",
+      "curl",
+      "dom",
+      "fileinfo",
+      "gd",
+      "json",
+      "mbstring",
+      "openssl",
+      "posix",
+      "session",
+      "simplexml",
+      "xmlreader",
+      "xmlwriter",
+      "zip",
+      "zlib"
+    ],
+    "phpVersion": ">=8.2",
+    "minDiskMB": 2048,
+    "minRAMMB": 1024
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "occ",
+        "maintenance:install",
+        "--database=mysql",
+        "--database-name={dbName}",
+        "--database-host={dbHost}",
+        "--database-port={dbPort}",
+        "--database-user={dbUser}",
+        "--database-pass={dbPassword}",
+        "--admin-user={adminUser}",
+        "--admin-pass={adminPassword}",
+        "--data-dir={dataPath}",
+        "--no-interaction"
+      ],
+      "timeoutSeconds": 1800
+    },
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "occ",
+        "config:system:set",
+        "trusted_domains",
+        "0",
+        "--value={domain}"
+      ],
+      "timeoutSeconds": 120
+    },
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "occ",
+        "config:system:set",
+        "overwrite.cli.url",
+        "--value={siteURL}"
+      ],
+      "timeoutSeconds": 120
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "occ",
+        "upgrade",
+        "--no-interaction"
+      ],
+      "timeoutSeconds": 1800
+    }
+  ]
+}

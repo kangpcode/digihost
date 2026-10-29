@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,8 +21,8 @@ import (
 	"syscall"
 	"time"
 
-	"digipanel/core/auth"
 	"digipanel/core/audit"
+	"digipanel/core/auth"
 	"digipanel/core/queue"
 	"digipanel/core/rbac"
 	"digipanel/modules/dns"
@@ -29,6 +30,7 @@ import (
 	"digipanel/modules/mail"
 	"digipanel/modules/php"
 	"digipanel/modules/runtimes"
+	"digipanel/modules/softinstaller"
 	"digipanel/modules/ssl"
 )
 
@@ -119,9 +121,9 @@ type ClusterNode struct {
 }
 
 type ServerState struct {
-	mu           sync.RWMutex
-	StorageDir   string
-	ModulesDir   string
+	mu              sync.RWMutex
+	StorageDir      string
+	ModulesDir      string
 	Users           map[string]*UserAccount
 	AuditLogger     *audit.Logger
 	TaskQueue       *queue.QueueEngine
@@ -131,6 +133,7 @@ type ServerState struct {
 	MailManager     *mail.Manager
 	RuntimesManager *runtimes.Manager
 	PHPManager      *php.Manager
+	SoftInstaller   *softinstaller.Manager
 	DnsRecords      []DnsRecord
 	LedgerItems     []LedgerEntry
 	ClusterNodes    []ClusterNode
@@ -158,44 +161,52 @@ var publicRoutes = map[string]bool{
 }
 
 var routeRequiredPermissions = map[string]string{
-	"GET /api/v1/runtimes/apps":              "runtimes.view",
-	"GET /api/v1/php/versions":               "runtimes.view",
+	"GET /api/v1/runtimes/apps":               "runtimes.view",
+	"GET /api/v1/php/versions":                "runtimes.view",
 	"GET /api/v1/php/domains":                 "runtimes.view",
-	"GET /api/v1/php/config":                   "runtimes.view",
-	"POST /api/v1/php/config":                  "runtimes.manage",
+	"GET /api/v1/php/config":                  "runtimes.view",
+	"POST /api/v1/php/config":                 "runtimes.manage",
 	"GET /api/v1/runtimes/apps/logs":          "runtimes.view",
 	"GET /api/v1/runtimes/detected":           "runtimes.view",
 	"POST /api/v1/runtimes/apps":              "runtimes.manage",
 	"POST /api/v1/runtimes/apps/action":       "runtimes.manage",
 	"DELETE /api/v1/runtimes/apps":            "runtimes.manage",
-	"GET /api/v1/cluster/fleet":              "system.fleet.read",
-	"POST /api/v1/hosting/accounts":          "accounts.create",
+	"GET /api/v1/cluster/fleet":               "system.fleet.read",
+	"POST /api/v1/hosting/accounts":           "accounts.create",
 	"POST /api/v1/hosting/accounts/suspend":   "accounts.suspend",
 	"POST /api/v1/hosting/accounts/unsuspend": "accounts.suspend",
 	"POST /api/v1/hosting/accounts/terminate": "accounts.terminate",
-	"GET /api/v1/dns/zones":                  "dns.read",
-	"POST /api/v1/dns/zones":                 "dns.write",
-	"GET /api/v1/dns/records":                "dns.read",
-	"POST /api/v1/dns/records":               "dns.write",
-	"DELETE /api/v1/dns/records":             "dns.delete",
-	"POST /api/v1/dns/dnssec/toggle":         "dns.sec",
-	"GET /api/v1/dns/health":                 "dns.read",
-	"GET /api/v1/ssl/certificates":           "ssl.read",
-	"POST /api/v1/ssl/issue":                 "ssl.issue",
-	"POST /api/v1/ssl/renew":                 "ssl.renew",
-	"POST /api/v1/ssl/autossl":               "ssl.renew",
-	"GET /api/v1/mail/domains":               "mail.read",
-	"POST /api/v1/mail/domains":              "mail.write",
-	"GET /api/v1/mail/mailboxes":             "mail.read",
-	"POST /api/v1/mail/mailboxes":            "mail.write",
-	"POST /api/v1/mail/forwarders":           "mail.write",
-	"POST /api/v1/mail/send":                 "mail.write",
-	"POST /api/v1/mail/deliver":              "mail.write",
-	"POST /api/v1/mail/cleanliness":          "mail.antispam",
-	"GET /api/v1/billing/ledger":             "billing.ledger.read",
-	"GET /api/v1/billing/invoices":           "billing.invoices.read",
-	"GET /api/v1/audit/logs":                 "audit.logs.read",
-	"GET /api/v1/system/modules":             "system.modules.manage",
+	"GET /api/v1/dns/zones":                   "dns.read",
+	"POST /api/v1/dns/zones":                  "dns.write",
+	"GET /api/v1/dns/records":                 "dns.read",
+	"POST /api/v1/dns/records":                "dns.write",
+	"DELETE /api/v1/dns/records":              "dns.delete",
+	"POST /api/v1/dns/dnssec/toggle":          "dns.sec",
+	"GET /api/v1/dns/health":                  "dns.read",
+	"GET /api/v1/ssl/certificates":            "ssl.read",
+	"POST /api/v1/ssl/issue":                  "ssl.issue",
+	"POST /api/v1/ssl/renew":                  "ssl.renew",
+	"POST /api/v1/ssl/autossl":                "ssl.renew",
+	"GET /api/v1/mail/domains":                "mail.read",
+	"POST /api/v1/mail/domains":               "mail.write",
+	"GET /api/v1/mail/mailboxes":              "mail.read",
+	"POST /api/v1/mail/mailboxes":             "mail.write",
+	"POST /api/v1/mail/forwarders":            "mail.write",
+	"POST /api/v1/mail/send":                  "mail.write",
+	"POST /api/v1/mail/deliver":               "mail.write",
+	"POST /api/v1/mail/cleanliness":           "mail.antispam",
+	"GET /api/v1/billing/ledger":              "billing.ledger.read",
+	"GET /api/v1/billing/invoices":            "billing.invoices.read",
+	"GET /api/v1/audit/logs":                  "audit.logs.read",
+	"GET /api/v1/system/modules":              "system.modules.manage",
+	"GET /api/v1/apps/catalog":                "apps.read",
+	"GET /api/v1/apps/instances":              "apps.read",
+	"GET /api/v1/apps/logs":                   "apps.read",
+	"POST /api/v1/apps/install":               "apps.install",
+	"POST /api/v1/apps/clone":                 "apps.clone",
+	"POST /api/v1/apps/update":                "apps.manage",
+	"POST /api/v1/apps/uninstall":             "apps.manage",
+	"DELETE /api/v1/apps/instances":           "apps.manage",
 }
 
 func initStorage(state *ServerState) {
@@ -206,6 +217,7 @@ func initStorage(state *ServerState) {
 		filepath.Join(state.StorageDir, "dns"),
 		filepath.Join(state.StorageDir, "billing"),
 		filepath.Join(state.StorageDir, "runtimes"),
+		filepath.Join(state.StorageDir, "sites"),
 	}
 	for _, d := range dirs {
 		_ = os.MkdirAll(d, 0755)
@@ -266,8 +278,9 @@ echo "DigiPanel Native PHP Engine: " . phpversion();
 	state.DNSManager = dns.NewManager()
 	state.SSLManager = ssl.NewManager(filepath.Join(state.StorageDir, "ssl"))
 	state.MailManager = mail.NewManager("103.189.201.42")
-	state.RuntimesManager =	runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
+	state.RuntimesManager = runtimes.NewManager(filepath.Join(state.StorageDir, "runtimes"))
 	state.PHPManager = php.NewManager(filepath.Join(state.StorageDir, "php"))
+	state.SoftInstaller = newSoftInstallerManager(state)
 
 	// Seed testuser account in hosting manager
 	_, _ = state.HostingManager.CreateAccount(hosting.CreateAccountRequest{
@@ -322,7 +335,7 @@ echo "DigiPanel Native PHP Engine: " . phpversion();
 		},
 	}
 
-state.DnsRecords = []DnsRecord{
+	state.DnsRecords = []DnsRecord{
 		{ID: "rec-1", Domain: "digipanel.live", Type: "A", Name: "@", Content: "103.189.201.42", TTL: 300},
 		{ID: "rec-2", Domain: "digipanel.live", Type: "A", Name: "panel", Content: "103.189.201.42", TTL: 300},
 		{ID: "rec-3", Domain: "digipanel.live", Type: "CNAME", Name: "www", Content: "digipanel.live", TTL: 3600},
@@ -1419,6 +1432,202 @@ func NewServerHandler(state *ServerState) http.Handler {
 		_ = json.NewEncoder(w).Encode(score)
 	})
 
+	// Application marketplace: catalogue, install, clone, update, uninstall,
+	// and per-instance logs. Every handler delegates to the softinstaller
+	// manager, which performs the real download, verification, extraction,
+	// database provisioning, and post-install execution.
+	mux.HandleFunc("/api/v1/apps/catalog", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.SoftInstaller.Catalogue())
+	})
+
+	mux.HandleFunc("/api/v1/apps/instances", func(w http.ResponseWriter, r *http.Request) {
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		switch r.Method {
+		case "GET":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(state.SoftInstaller.Instances())
+		case "DELETE":
+			id := r.URL.Query().Get("id")
+			if id == "" {
+				writeAPIError(w, "Missing instance id", http.StatusBadRequest)
+				return
+			}
+			if err := state.SoftInstaller.Uninstall(id, softinstaller.InstallRequest{}); err != nil {
+				writeInstallerError(w, err)
+				return
+			}
+			state.AuditLogger.Append("admin", "apps.uninstall", "application", id, `{}`, r.RemoteAddr)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/v1/apps/install", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		var req softinstaller.InstallRequest
+		if err := decodeJSONBody(w, r, &req); err != nil {
+			writeAPIError(w, "Invalid install request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := state.SoftInstaller.Install(req)
+		if err != nil {
+			writeInstallerError(w, err)
+			return
+		}
+		state.AuditLogger.Append("admin", "apps.install", "application", result.Instance.ID, fmt.Sprintf(`{"package":%q,"domain":%q,"version":%q}`, result.Instance.PackageID, result.Instance.Domain, result.Instance.PackageVersion), r.RemoteAddr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(result)
+	})
+
+	mux.HandleFunc("/api/v1/apps/clone", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		var body struct {
+			softinstaller.InstallRequest
+			ID      string `json:"id"`
+			Staging bool   `json:"staging"`
+		}
+		if err := decodeJSONBody(w, r, &body); err != nil {
+			writeAPIError(w, "Invalid clone request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.ID == "" {
+			writeAPIError(w, "Missing instance id", http.StatusBadRequest)
+			return
+		}
+		clone, err := state.SoftInstaller.Clone(body.ID, body.InstallRequest, body.Staging)
+		if err != nil {
+			writeInstallerError(w, err)
+			return
+		}
+		state.AuditLogger.Append("admin", "apps.clone", "application", clone.ID, fmt.Sprintf(`{"source":%q,"domain":%q,"staging":%t}`, body.ID, clone.Domain, body.Staging), r.RemoteAddr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(clone)
+	})
+
+	mux.HandleFunc("/api/v1/apps/update", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		var body struct {
+			ID            string `json:"id"`
+			AdminPassword string `json:"adminPassword,omitempty"`
+		}
+		if err := decodeJSONBody(w, r, &body); err != nil {
+			writeAPIError(w, "Invalid update request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.ID == "" {
+			writeAPIError(w, "Missing instance id", http.StatusBadRequest)
+			return
+		}
+		inst, err := state.SoftInstaller.Update(body.ID, softinstaller.InstallRequest{AdminPassword: body.AdminPassword})
+		if err != nil {
+			writeInstallerError(w, err)
+			return
+		}
+		state.AuditLogger.Append("admin", "apps.update", "application", inst.ID, fmt.Sprintf(`{"version":%q}`, inst.PackageVersion), r.RemoteAddr)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(inst)
+	})
+
+	mux.HandleFunc("/api/v1/apps/uninstall", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		var body struct {
+			ID          string `json:"id"`
+			DatabaseURL string `json:"databaseURL,omitempty"`
+			DBEngine    string `json:"dbEngine,omitempty"`
+			DBAdminUser string `json:"dbAdminUser,omitempty"`
+			DBAdminPass string `json:"dbAdminPass,omitempty"`
+			MySQLBinary string `json:"mysqlBinary,omitempty"`
+			PsqlBinary  string `json:"psqlBinary,omitempty"`
+		}
+		if err := decodeJSONBody(w, r, &body); err != nil {
+			writeAPIError(w, "Invalid uninstall request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.ID == "" {
+			writeAPIError(w, "Missing instance id", http.StatusBadRequest)
+			return
+		}
+		req := softinstaller.InstallRequest{
+			DatabaseURL: body.DatabaseURL, DBEngine: body.DBEngine,
+			DBAdminUser: body.DBAdminUser, DBAdminPass: body.DBAdminPass,
+			MySQLBinary: body.MySQLBinary, PsqlBinary: body.PsqlBinary,
+		}
+		if err := state.SoftInstaller.Uninstall(body.ID, req); err != nil {
+			writeInstallerError(w, err)
+			return
+		}
+		state.AuditLogger.Append("admin", "apps.uninstall", "application", body.ID, `{"status":"removed"}`, r.RemoteAddr)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+	})
+
+	mux.HandleFunc("/api/v1/apps/logs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if state.SoftInstaller == nil {
+			writeAPIError(w, "Application catalogue is not available on this node", http.StatusServiceUnavailable)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			writeAPIError(w, "Missing instance id", http.StatusBadRequest)
+			return
+		}
+		lines, err := state.SoftInstaller.Logs(id, 200)
+		if err != nil {
+			writeInstallerError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"id": id, "lines": lines})
+	})
+
 	// Wrap mux with Default-Deny & RBAC router enforcement
 	return WithDefaultDenyAuthAndRbac(mux, publicRoutes)
 }
@@ -1439,6 +1648,10 @@ func main() {
 	}
 
 	initStorage(state)
+	if state.SoftInstaller == nil {
+		fmt.Fprintln(os.Stderr, "DigiPanel: application marketplace catalogue is unavailable; refusing to start")
+		os.Exit(1)
+	}
 
 	handler := NewServerHandler(state)
 
@@ -1452,4 +1665,72 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// newSoftInstallerManager builds the application marketplace manager. A node
+// without a usable catalogue reports unavailability through the API rather than
+// serving fabricated entries.
+func newSoftInstallerManager(state *ServerState) *softinstaller.Manager {
+	catalogDir := filepath.Join(state.ModulesDir, "softinstaller", "catalog")
+	if _, err := os.Stat(catalogDir); err != nil {
+		fmt.Fprintf(os.Stderr, "softinstaller: catalogue directory unavailable: %v\n", err)
+		return nil
+	}
+	manager, err := softinstaller.NewManager(softinstaller.Config{
+		CatalogDir:             catalogDir,
+		BaseInstallDir:         filepath.Join(state.StorageDir, "sites"),
+		StateDir:               filepath.Join(state.StorageDir, "softinstaller"),
+		RequireSignedManifests: os.Getenv("DIGIPANEL_REQUIRE_SIGNED_MANIFESTS") == "1",
+		ManifestPublicKeyPath:  os.Getenv("DIGIPANEL_MANIFEST_PUBLIC_KEY"),
+		DefaultDB: softinstaller.DatabaseDefaults{
+			Engine:        os.Getenv("DIGIPANEL_DB_ENGINE"),
+			URL:           os.Getenv("DIGIPANEL_DB_URL"),
+			AdminUser:     os.Getenv("DIGIPANEL_DB_ADMIN_USER"),
+			AdminPassword: os.Getenv("DIGIPANEL_DB_ADMIN_PASSWORD"),
+			MySQLBinary:   os.Getenv("DIGIPANEL_MYSQL_BINARY"),
+			PsqlBinary:    os.Getenv("DIGIPANEL_PSQL_BINARY"),
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "softinstaller: initialisation failed: %v\n", err)
+		return nil
+	}
+	return manager
+}
+
+// decodeJSONBody limits request bodies and rejects trailing data.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeAPIError(w http.ResponseWriter, message string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// writeInstallerError maps installer sentinels to stable HTTP statuses without
+// leaking credentials.
+func writeInstallerError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, softinstaller.ErrPackageNotFound), errors.Is(err, softinstaller.ErrInstanceNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, softinstaller.ErrInvalidInput), errors.Is(err, softinstaller.ErrInvalidTarget),
+		errors.Is(err, softinstaller.ErrDatabaseRequired), errors.Is(err, softinstaller.ErrRequirements):
+		status = http.StatusBadRequest
+	case errors.Is(err, softinstaller.ErrTargetOccupied):
+		status = http.StatusConflict
+	case errors.Is(err, softinstaller.ErrChecksumUnverified), errors.Is(err, softinstaller.ErrDownloadFailed),
+		errors.Is(err, softinstaller.ErrExtractionFailed), errors.Is(err, softinstaller.ErrStepFailed),
+		errors.Is(err, softinstaller.ErrDatabaseProvision):
+		status = http.StatusBadGateway
+	}
+	writeAPIError(w, err.Error(), status)
 }

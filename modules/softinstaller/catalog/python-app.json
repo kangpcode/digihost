@@ -1,0 +1,55 @@
+{
+  "requiresDB": false,
+  "installMode": "python",
+  "archiveType": "generated",
+  "configKind": "python",
+  "id": "python-app",
+  "name": "Python Application",
+  "category": "Runtime",
+  "latestVersion": "1.0.0",
+  "description": "Minimal production Python HTTP application with health endpoint.",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "python3"
+    ],
+    "minDiskMB": 128,
+    "minRAMMB": 128
+  },
+  "files": [
+    {
+      "path": "app.py",
+      "content": "\"\"\"Minimal production HTTP application provisioned by DigiPanel.\n\nThe entry point uses only the Python standard library so the application can\nstart without a package installation step. Replace this module with the real\napplication and keep the health endpoint for process supervision.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport json\nimport os\nfrom datetime import datetime, timezone\nfrom http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n\nHOST = os.environ.get(\"HOST\", \"127.0.0.1\")\nPORT = int(os.environ.get(\"PORT\", \"8080\"))\nAPP_URL = os.environ.get(\"APP_URL\", f\"http://{HOST}:{PORT}\")\nSTARTED_AT = datetime.now(timezone.utc)\n\n\nclass ApplicationHandler(BaseHTTPRequestHandler):\n    server_version = \"DigiPanelApp/1.0\"\n\n    def do_GET(self) -> None:  # noqa: N802\n        if self.path == \"/healthz\":\n            self._send_json(200, {\"status\": \"ok\", \"uptimeSeconds\": int((datetime.now(timezone.utc) - STARTED_AT).total_seconds())})\n            return\n        if self.path in (\"/\", \"/index.html\"):\n            body = (\n                \"<!doctype html>\\n<html lang=\\\"en\\\">\\n<head><meta charset=\\\"utf-8\\\">\"\n                \"<meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">\"\n                \"<title>Application ready</title></head>\\n\"\n                \"<body style=\\\"font-family:system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1rem\\\">\\n\"\n                \"<h1>Application ready</h1>\\n\"\n                \"<p>This Python application was provisioned by DigiPanel.</p>\\n\"\n                f\"<dl><dt>Public URL</dt><dd>{APP_URL}</dd>\"\n                f\"<dt>Process started</dt><dd>{STARTED_AT.isoformat()}</dd>\"\n                f\"<dt>Python</dt><dd>{os.sys.version.split()[0]}</dd></dl>\\n\"\n                \"<p>Replace <code>app.py</code> with your application. Process supervision is managed from Runtimes &amp; Apps.</p>\\n\"\n                \"</body>\\n</html>\\n\"\n            )\n            self._send_text(200, \"text/html; charset=utf-8\", body)\n            return\n        self._send_text(404, \"text/plain; charset=utf-8\", \"not found\\n\")\n\n    def _send_json(self, status: int, payload: dict) -> None:\n        self._send_text(status, \"application/json; charset=utf-8\", json.dumps(payload))\n\n    def _send_text(self, status: int, content_type: str, body: str) -> None:\n        encoded = body.encode(\"utf-8\")\n        self.send_response(status)\n        self.send_header(\"content-type\", content_type)\n        self.send_header(\"content-length\", str(len(encoded)))\n        self.end_headers()\n        self.wfile.write(encoded)\n\n    def log_message(self, fmt: str, *args: object) -> None:\n        print(f\"{self.address_string()} {fmt % args}\", flush=True)\n\n\ndef main() -> None:\n    server = ThreadingHTTPServer((HOST, PORT), ApplicationHandler)\n    print(f\"listening on http://{HOST}:{PORT}\", flush=True)\n    try:\n        server.serve_forever()\n    except KeyboardInterrupt:\n        pass\n    finally:\n        server.server_close()\n\n\nif __name__ == \"__main__\":\n    main()\n",
+      "mode": 420
+    },
+    {
+      "path": "requirements.txt",
+      "content": "# No third-party dependencies required by the generated application.\n",
+      "mode": 420
+    }
+  ],
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "python3",
+      "args": [
+        "-m",
+        "py_compile",
+        "app.py"
+      ],
+      "timeoutSeconds": 120
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "python3",
+      "args": [
+        "-m",
+        "py_compile",
+        "app.py"
+      ],
+      "timeoutSeconds": 120
+    }
+  ]
+}

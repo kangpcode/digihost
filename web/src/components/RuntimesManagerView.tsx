@@ -42,6 +42,31 @@ interface DetectedRuntimes {
   golang?: string;
 }
 
+interface PhpVersion {
+  id: string;
+  full: string;
+  binaryPath: string;
+  fpmPath: string;
+  extensions: Record<string, boolean>;
+}
+
+interface PhpDomainConfig {
+  domain: string;
+  version: string;
+  memoryLimit: string;
+  maxExecutionTime: number;
+  uploadMaxFilesize: string;
+  extensions: string[];
+  allowUrlFopen: string;
+  unixUser: string;
+  updatedAt: string;
+}
+
+interface HostingAccountLite {
+  username: string;
+  primaryDomain: string;
+}
+
 interface RuntimesManagerViewProps {
   language: Language;
   onOpenTerminal: () => void;
@@ -67,24 +92,15 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
   const [appEntry, setAppEntry] = useState('index.js');
   const [appPort, setAppPort] = useState(3000);
 
-  // PHP Manager State
-  const [activePhpVersion, setActivePhpVersion] = useState('8.3');
+  // PHP Manager State (backed by modules/php real interpreter inventory)
+  const [phpVersions, setPhpVersions] = useState<PhpVersion[]>([]);
+  const [phpDomain, setPhpDomain] = useState('');
+  const [activePhpVersion, setActivePhpVersion] = useState('');
   const [memoryLimit, setMemoryLimit] = useState('512M');
   const [maxExecutionTime, setMaxExecutionTime] = useState(300);
   const [uploadMaxFilesize, setUploadMaxFilesize] = useState('128M');
-  const [phpExtensions, setPhpExtensions] = useState<Record<string, boolean>>({
-    opcache: true,
-    redis: true,
-    pdo_mysql: true,
-    curl: true,
-    mbstring: true,
-    gd: true,
-    openssl: true,
-    bcmath: true,
-    fileinfo: true,
-    intl: true
-  });
-  const [phpSavedNotice, setPhpSavedNotice] = useState(false);
+  const [phpExtensions, setPhpExtensions] = useState<Record<string, boolean>>({});
+  const [phpSavedNotice, setPhpSavedNotice] = useState('');
 
   // Fetch supervised apps and host-detected runtime versions from the API.
   const fetchApps = async () => {
@@ -105,6 +121,65 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
 
   useEffect(() => {
     fetchApps();
+  }, []);
+
+  // PHP inventory: real interpreter list plus any previously saved per-domain
+  // configuration. The owning domain comes from saved configs, or from the
+  // first hosting account when none is configured yet.
+  const fetchPhpConfig = async () => {
+    try {
+      const versions = await apiFetch<PhpVersion[]>('/api/v1/php/versions');
+      setPhpVersions(versions);
+
+      let domain = '';
+      let cfg: PhpDomainConfig | null = null;
+      try {
+        const domains = await apiFetch<PhpDomainConfig[]>('/api/v1/php/domains');
+        if (Array.isArray(domains) && domains.length > 0) {
+          domain = domains[0].domain;
+          const cfgRes = await apiFetch<{ configured: boolean; config?: PhpDomainConfig }>(
+            `/api/v1/php/config?domain=${encodeURIComponent(domain)}`
+          );
+          cfg = cfgRes.config ?? null;
+        }
+      } catch {
+        // no saved configs yet; resolve domain from hosting accounts below
+      }
+      if (!domain) {
+        try {
+          const accounts = await apiFetch<HostingAccountLite[]>('/api/v1/hosting/accounts');
+          if (Array.isArray(accounts) && accounts.length > 0) {
+            domain = accounts[0].primaryDomain;
+          }
+        } catch {
+          // user lacking accounts list permission; tab still shows inventory
+        }
+      }
+      if (!domain) return;
+      setPhpDomain(domain);
+      const versionId = cfg?.version ?? versions[0]?.id ?? '';
+      setActivePhpVersion(versionId);
+      const enabledSet = new Set(cfg?.extensions ?? []);
+      const extState: Record<string, boolean> = {};
+      const selected = versions.find(v => v.id === versionId) ?? versions[0];
+      if (selected) {
+        for (const name of Object.keys(selected.extensions)) {
+          extState[name] = enabledSet.has(name);
+        }
+      }
+      setPhpExtensions(extState);
+      if (cfg) {
+        setMemoryLimit(cfg.memoryLimit);
+        setMaxExecutionTime(cfg.maxExecutionTime);
+        setUploadMaxFilesize(cfg.uploadMaxFilesize);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchPhpConfig();
   }, []);
 
   const handleAppAction = async (appId: string, action: 'start' | 'stop' | 'restart') => {
@@ -175,9 +250,28 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
     setPhpExtensions(prev => ({ ...prev, [ext]: !prev[ext] }));
   };
 
-  const savePhpConfig = () => {
-    setPhpSavedNotice(true);
-    setTimeout(() => setPhpSavedNotice(false), 2500);
+  // Save: writes real per-domain ini and pool files via modules/php, and the
+  // notice carries the honest backend reload status (fpm detected or not).
+  const savePhpConfig = async () => {
+    try {
+      const enabled = Object.entries(phpExtensions).filter(([, on]) => on).map(([name]) => name);
+      const report = await apiFetch<{ reloadNote: string; fpmDetected: boolean }>('/api/v1/php/config', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: phpDomain,
+          version: activePhpVersion,
+          memoryLimit,
+          maxExecutionTime,
+          uploadMaxFilesize,
+          extensions: enabled
+        })
+      });
+      setPhpSavedNotice(report.reloadNote || 'ok');
+      setTimeout(() => setPhpSavedNotice(''), 6000);
+    } catch (e: any) {
+      setPhpSavedNotice(e?.message ?? 'save failed');
+      setTimeout(() => setPhpSavedNotice(''), 6000);
+    }
   };
 
   const currentTabApps = apps.filter(a => a.runtime === activeTab);
@@ -233,7 +327,7 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
           { id: 'nodejs', label: `Node.js (v${detected.nodejs ?? '-'})`, count: apps.filter(a => a.runtime === 'nodejs').length },
           { id: 'python', label: `Python (v${detected.python ?? '-'})`, count: apps.filter(a => a.runtime === 'python').length },
           { id: 'golang', label: `Go (v${detected.golang ?? '-'})`, count: apps.filter(a => a.runtime === 'golang').length },
-          { id: 'php', label: 'PHP & OPcache (v8.3)', count: 1 }
+          { id: 'php', label: `PHP & OPcache (v${phpVersions[0]?.full ?? '-'})`, count: phpDomain ? 1 : 0 }
         ].map(tab => (
           <button
             key={tab.id}
@@ -401,7 +495,7 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
               fontWeight: 600
             }}>
               <Check size={18} />
-              <span>{t('rtPhpReloaded')}</span>
+              <span>{phpSavedNotice}</span>
             </div>
           )}
 
@@ -422,13 +516,25 @@ export const RuntimesManagerView: React.FC<RuntimesManagerViewProps> = ({
                   </label>
                   <select 
                     value={activePhpVersion} 
-                    onChange={(e) => setActivePhpVersion(e.target.value)}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setActivePhpVersion(nextId);
+                      const next = phpVersions.find(v => v.id === nextId);
+                      const nextExts: Record<string, boolean> = {};
+                      if (next) {
+                        for (const name of Object.keys(next.extensions)) {
+                          nextExts[name] = phpExtensions[name] ?? false;
+                        }
+                      }
+                      setPhpExtensions(nextExts);
+                    }}
                     className="input-glass font-mono"
                     style={{ height: '38px' }}
                   >
-                    <option value="8.3">PHP 8.3</option>
-                    <option value="8.2">PHP 8.2</option>
-                    <option value="8.1">PHP 8.1</option>
+                    {phpVersions.length === 0 && <option value="">-</option>}
+                    {phpVersions.map(v => (
+                      <option key={v.id} value={v.id}>PHP {v.full}{v.fpmPath ? ' (FPM)' : ' (CLI)'}</option>
+                    ))}
                   </select>
                 </div>
 

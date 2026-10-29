@@ -1,0 +1,52 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "zip",
+  "configKind": "phpbb",
+  "id": "phpbb",
+  "name": "phpBB",
+  "category": "Community",
+  "latestVersion": "3.3.19",
+  "description": "Bulletin board and forum software.",
+  "homepage": "https://www.phpbb.com",
+  "downloadURL": "https://download.phpbb.com/pub/release/3.3/3.3.19/phpBB-3.3.19.zip",
+  "stripPrefix": "phpBB3/",
+  "pinnedSHA256": "1530e5cabf7ecc9ecfaed3fa13da79f9e8a514623beafababc8800b5ce966de9",
+  "dbEngine": "mysql",
+  "adminPath": "/adm",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "pdo_mysql",
+      "json",
+      "mbstring",
+      "xml",
+      "zip",
+      "gd",
+      "curl"
+    ],
+    "phpVersion": ">=7.2",
+    "minDiskMB": 512,
+    "minRAMMB": 512
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "install/phpbbcli.php",
+        "install",
+        ".digipanel/phpbb-install.yml"
+      ],
+      "timeoutSeconds": 1800
+    },
+    {
+      "kind": "builtin",
+      "action": "cleanup.installer"
+    }
+  ]
+}

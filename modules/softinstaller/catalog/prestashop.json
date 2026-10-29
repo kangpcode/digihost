@@ -1,0 +1,63 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "zip",
+  "configKind": "none",
+  "id": "prestashop",
+  "name": "PrestaShop",
+  "category": "E-Commerce",
+  "latestVersion": "8.2.8",
+  "description": "Open-source e-commerce platform for online stores.",
+  "homepage": "https://www.prestashop-project.org",
+  "downloadURL": "https://github.com/PrestaShop/PrestaShop/releases/download/8.2.8/prestashop_8.2.8.zip",
+  "innerArchive": "prestashop.zip",
+  "pinnedSHA256": "0d6931ed9ecb2636ae8024c5660bb72dc3c5f835738b79d3c1bda984e353598d",
+  "dbEngine": "mysql",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "pdo_mysql",
+      "json",
+      "mbstring",
+      "xml",
+      "zip",
+      "gd",
+      "curl"
+    ],
+    "phpVersion": ">=7.2.5 <8.2",
+    "minDiskMB": 1024,
+    "minRAMMB": 512
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "install/index_cli.php",
+        "--domain={domain}",
+        "--db_server={dbHost}",
+        "--db_user={dbUser}",
+        "--db_password={dbPassword}",
+        "--db_name={dbName}",
+        "--prefix=ps_",
+        "--name={title}",
+        "--password={adminPassword}",
+        "--email={adminEmail}",
+        "--language=en",
+        "--country=us",
+        "--base_uri=/{domainPath}",
+        "--ssl=1",
+        "--license=0"
+      ],
+      "timeoutSeconds": 1800
+    },
+    {
+      "kind": "builtin",
+      "action": "cleanup.installer"
+    }
+  ]
+}

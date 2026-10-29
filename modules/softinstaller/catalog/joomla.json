@@ -1,0 +1,69 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "tar.gz",
+  "configKind": "none",
+  "id": "joomla",
+  "name": "Joomla",
+  "category": "CMS",
+  "latestVersion": "6.2.0",
+  "description": "Content management system for building websites and applications.",
+  "homepage": "https://www.joomla.org",
+  "downloadURL": "https://github.com/joomla/joomla-cms/releases/download/6.2.0/Joomla_6.2.0-Stable-Full_Package.tar.gz",
+  "pinnedSHA256": "f7a4c3962c4a8682f5847ea9d47d2848f6eb475109805935c9e19a5c6511829d",
+  "dbEngine": "mysql",
+  "adminPath": "/administrator",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "pdo_mysql",
+      "json",
+      "mbstring",
+      "xml",
+      "zip",
+      "gd",
+      "curl"
+    ],
+    "phpVersion": ">=8.3",
+    "minDiskMB": 1024,
+    "minRAMMB": 512
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "installation/joomla.php",
+        "install",
+        "--no-interaction",
+        "--site-name={title}",
+        "--admin-user=Administrator",
+        "--admin-username={adminUser}",
+        "--admin-password={adminPassword}",
+        "--admin-email={adminEmail}",
+        "--db-type=mysqli",
+        "--db-host={dbHost}",
+        "--db-user={dbUser}",
+        "--db-pass={dbPassword}",
+        "--db-name={dbName}",
+        "--db-prefix=jos_",
+        "--db-encryption=0",
+        "--db-sslkey=",
+        "--db-sslcert=",
+        "--db-sslverifyservercert=0",
+        "--db-sslca=",
+        "--db-sslcipher=",
+        "--public-folder="
+      ],
+      "timeoutSeconds": 1800
+    },
+    {
+      "kind": "builtin",
+      "action": "cleanup.installer"
+    }
+  ]
+}

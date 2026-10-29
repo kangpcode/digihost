@@ -1,0 +1,75 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "tar.gz",
+  "configKind": "wordpress",
+  "id": "wordpress",
+  "name": "WordPress",
+  "category": "CMS",
+  "latestVersion": "7.1.4",
+  "description": "Publishing platform and content management system.",
+  "homepage": "https://wordpress.org",
+  "downloadURL": "https://downloads.wordpress.org/release/wordpress-7.1.4.tar.gz",
+  "stripPrefix": "wordpress/",
+  "pinnedSHA256": "881e53a4681ff2cd911651b11cccdede5ae477ddf0765af5d6a1a8b219a1d835",
+  "dbEngine": "mysql",
+  "configFile": "wp-config.php",
+  "adminPath": "/wp-admin",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "pdo_mysql",
+      "json",
+      "mbstring",
+      "xml",
+      "zip",
+      "gd",
+      "curl"
+    ],
+    "phpVersion": ">=7.4",
+    "minDiskMB": 512,
+    "minRAMMB": 256
+  },
+  "tools": [
+    {
+      "name": "wp-cli",
+      "url": "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar",
+      "sha256": "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c",
+      "path": ".digipanel/tools/wp-cli"
+    }
+  ],
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "{tool:wp-cli}",
+      "args": [
+        "core",
+        "install",
+        "--url={siteURL}",
+        "--title={title}",
+        "--admin_user={adminUser}",
+        "--admin_password={adminPassword}",
+        "--admin_email={adminEmail}",
+        "--skip-email",
+        "--path={path}"
+      ],
+      "timeoutSeconds": 900
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "{tool:wp-cli}",
+      "args": [
+        "core",
+        "update-db",
+        "--path={path}"
+      ],
+      "timeoutSeconds": 900
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "tar.gz",
+  "configKind": "none",
+  "id": "mediawiki",
+  "name": "MediaWiki",
+  "category": "CMS",
+  "latestVersion": "1.44.6",
+  "description": "Wiki engine used by collaborative knowledge bases.",
+  "homepage": "https://www.mediawiki.org",
+  "downloadURL": "https://releases.wikimedia.org/mediawiki/1.44/mediawiki-1.44.6.tar.gz",
+  "stripPrefix": "mediawiki-1.44.6/",
+  "pinnedSHA256": "281159ad693f6a1b87ce9793197b827b876f58dc0508cde38cb1c8aba6e82c59",
+  "dbEngine": "mysql",
+  "adminPath": "/index.php?title=Special:UserLogin",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "pdo_mysql",
+      "mbstring",
+      "xml",
+      "json",
+      "intl",
+      "fileinfo",
+      "iconv"
+    ],
+    "phpVersion": ">=8.1",
+    "minDiskMB": 512,
+    "minRAMMB": 512
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "maintenance/install.php",
+        "--dbtype=mysql",
+        "--dbserver={dbHost}",
+        "--dbport={dbPort}",
+        "--dbname={dbName}",
+        "--dbuser={dbUser}",
+        "--dbpass={dbPassword}",
+        "--server={siteURL}",
+        "--scriptpath=/{domainPath}",
+        "--lang=en",
+        "--pass={adminPassword}",
+        "{title}",
+        "{adminUser}"
+      ],
+      "timeoutSeconds": 1800
+    },
+    {
+      "kind": "builtin",
+      "action": "cleanup.installer"
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "maintenance/update.php",
+        "--quick"
+      ],
+      "timeoutSeconds": 1800
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "tar.gz",
+  "configKind": "drupal",
+  "id": "drupal",
+  "name": "Drupal",
+  "category": "CMS",
+  "latestVersion": "11.4.0",
+  "description": "Modular content management framework for structured content.",
+  "homepage": "https://www.drupal.org",
+  "downloadURL": "https://ftp.drupal.org/files/projects/drupal-11.4.0.tar.gz",
+  "stripPrefix": "drupal-11.4.0/",
+  "pinnedSHA256": "257ca240db666e8456606abdda805fdf4cb1df79833412ae89864cf06a6a8c93",
+  "dbEngine": "mysql",
+  "adminPath": "/core/install.php",
+  "completionMode": "wizard",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "pdo_mysql",
+      "json",
+      "mbstring",
+      "xml",
+      "zip",
+      "gd",
+      "curl"
+    ],
+    "phpVersion": ">=8.3",
+    "minDiskMB": 1024,
+    "minRAMMB": 512
+  },
+  "notes": "Drupal 11 ships its database installer only in the browser flow. DigiPanel deploys the release, provisions the database, and writes settings.php; the operator completes the profile and first account at /core/install.php."
+}

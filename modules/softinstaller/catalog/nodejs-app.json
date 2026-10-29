@@ -1,0 +1,58 @@
+{
+  "requiresDB": false,
+  "installMode": "node",
+  "archiveType": "generated",
+  "configKind": "node",
+  "id": "nodejs-app",
+  "name": "Node.js Application",
+  "category": "Runtime",
+  "latestVersion": "1.0.0",
+  "description": "Minimal production Node.js HTTP application with health endpoint.",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "node",
+      "npm"
+    ],
+    "minDiskMB": 128,
+    "minRAMMB": 128
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "content": "{\n  \"name\": \"digipanel-node-app\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"description\": \"Node.js application provisioned by DigiPanel\",\n  \"main\": \"server.js\",\n  \"scripts\": {\n    \"start\": \"node server.js\"\n  },\n  \"engines\": {\n    \"node\": \">=20\"\n  }\n}\n",
+      "mode": 420
+    },
+    {
+      "path": "server.js",
+      "content": "\"use strict\";\n\nconst http = require(\"node:http\");\nconst fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\ntry {\n  if (typeof process.loadEnvFile === \"function\") {\n    process.loadEnvFile(path.join(__dirname, \".env\"));\n  }\n} catch (error) {\n  if (error && error.code !== \"ENOENT\") {\n    console.error(\"environment file error:\", error.message);\n  }\n}\n\nconst port = Number(process.env.PORT || 8080);\nconst host = process.env.HOST || \"127.0.0.1\";\nconst appURL = process.env.APP_URL || `http://${host}:${port}`;\nconst startedAt = new Date();\n\nconst server = http.createServer((request, response) => {\n  if (request.url === \"/healthz\") {\n    response.writeHead(200, { \"content-type\": \"application/json; charset=utf-8\" });\n    response.end(JSON.stringify({ status: \"ok\", uptimeSeconds: Math.floor(process.uptime()) }));\n    return;\n  }\n  if (request.url === \"/\" || request.url === \"/index.html\") {\n    response.writeHead(200, { \"content-type\": \"text/html; charset=utf-8\" });\n    response.end(`<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Application ready</title></head>\n<body style=\"font-family:system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1rem\">\n<h1>Application ready</h1>\n<p>This Node.js application was provisioned by DigiPanel.</p>\n<dl>\n<dt>Public URL</dt><dd>${appURL}</dd>\n<dt>Process started</dt><dd>${startedAt.toISOString()}</dd>\n<dt>Node.js</dt><dd>${process.version}</dd>\n</dl>\n<p>Replace <code>server.js</code> with your application entry point. Process supervision is managed from Runtimes &amp; Apps.</p>\n</body>\n</html>`);\n    return;\n  }\n  response.writeHead(404, { \"content-type\": \"text/plain; charset=utf-8\" });\n  response.end(\"not found\\n\");\n});\n\nserver.listen(port, host, () => {\n  console.log(`listening on http://${host}:${port}`);\n});\n\nfor (const signal of [\"SIGINT\", \"SIGTERM\"]) {\n  process.on(signal, () => server.close(() => process.exit(0)));\n}\n",
+      "mode": 420
+    }
+  ],
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "npm",
+      "args": [
+        "install",
+        "--omit=dev",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "timeoutSeconds": 900
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "npm",
+      "args": [
+        "install",
+        "--omit=dev",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "timeoutSeconds": 900
+    }
+  ]
+}

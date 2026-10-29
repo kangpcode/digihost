@@ -1,0 +1,75 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "zip",
+  "configKind": "none",
+  "id": "opencart",
+  "name": "OpenCart",
+  "category": "E-Commerce",
+  "latestVersion": "4.1.0.4",
+  "description": "Shopping cart and e-commerce platform.",
+  "homepage": "https://www.opencart.com",
+  "downloadURL": "https://github.com/opencart/opencart/releases/download/4.1.0.4/opencart-4.1.0.4.zip",
+  "stripPrefix": "upload/",
+  "pinnedSHA256": "cdef537f5a0a7e1b4ddbe16f589dd2e80b10150a09bfbe93ce76ef2d5c3218c0",
+  "dbEngine": "mysql",
+  "adminPath": "/admin",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "pdo_mysql",
+      "json",
+      "mbstring",
+      "xml",
+      "zip",
+      "gd",
+      "curl"
+    ],
+    "phpVersion": ">=8.0",
+    "minDiskMB": 512,
+    "minRAMMB": 512
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "install/cli_install.php",
+        "install",
+        "--username",
+        "{adminUser}",
+        "--email",
+        "{adminEmail}",
+        "--password",
+        "{adminPassword}",
+        "--http_server",
+        "{siteURL}/",
+        "--language",
+        "en-gb",
+        "--db_driver",
+        "mysqli",
+        "--db_hostname",
+        "{dbHost}",
+        "--db_username",
+        "{dbUser}",
+        "--db_password",
+        "{dbPassword}",
+        "--db_database",
+        "{dbName}",
+        "--db_port",
+        "{dbPort}",
+        "--db_prefix",
+        "oc_"
+      ],
+      "timeoutSeconds": 1200
+    },
+    {
+      "kind": "builtin",
+      "action": "cleanup.installer"
+    }
+  ]
+}

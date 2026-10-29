@@ -1,0 +1,37 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "tar.gz",
+  "configKind": "none",
+  "id": "matomo",
+  "name": "Matomo",
+  "category": "Analytics",
+  "latestVersion": "5.14.2",
+  "description": "Privacy-focused web analytics platform.",
+  "homepage": "https://matomo.org",
+  "downloadURL": "https://github.com/matomo-org/matomo/releases/download/5.14.2/matomo-5.14.2.tar.gz",
+  "stripPrefix": "matomo/",
+  "pinnedSHA256": "769982163c1677cfd23490f20daffbaa6d0d39b32844399dbfbacba2457fefb7",
+  "dbEngine": "mysql",
+  "adminPath": "/index.php",
+  "completionMode": "wizard",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "pdo_mysql",
+      "mbstring",
+      "xml",
+      "json",
+      "curl",
+      "gd",
+      "intl",
+      "zip"
+    ],
+    "phpVersion": ">=8.1",
+    "minDiskMB": 1024,
+    "minRAMMB": 512
+  },
+  "notes": "Matomo 5 ships no non-interactive installer. DigiPanel deploys the release and provisions the database; the operator completes the browser installer with the one-time database credentials returned by the install response."
+}

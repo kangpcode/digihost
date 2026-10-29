@@ -1,0 +1,75 @@
+{
+  "requiresDB": true,
+  "installMode": "php-cli",
+  "archiveType": "tar.gz",
+  "configKind": "none",
+  "id": "moodle",
+  "name": "Moodle",
+  "category": "Learning",
+  "latestVersion": "5.0.3",
+  "description": "Learning management system for online courses.",
+  "homepage": "https://moodle.org",
+  "downloadURL": "https://packaging.moodle.org/stable503/moodle-latest-503.tgz",
+  "stripPrefix": "moodle/",
+  "pinnedSHA256": "effd1646b178afd92b87fc130a77ebf5d4574bda0cb3f1c79ffcd003f040a852",
+  "dbEngine": "mysql",
+  "adminPath": "/admin",
+  "completionMode": "automatic",
+  "dataDirName": "moodledata",
+  "requirements": {
+    "binaries": [
+      "php"
+    ],
+    "phpExtensions": [
+      "mysqli",
+      "gd",
+      "mbstring",
+      "xml",
+      "zip",
+      "curl",
+      "intl",
+      "openssl",
+      "sodium",
+      "json"
+    ],
+    "phpVersion": ">=8.2",
+    "minDiskMB": 2048,
+    "minRAMMB": 1024
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "admin/cli/install.php",
+        "--wwwroot={siteURL}",
+        "--dataroot={dataPath}",
+        "--dbtype=mariadb",
+        "--dbhost={dbHost}",
+        "--dbport={dbPort}",
+        "--dbname={dbName}",
+        "--dbuser={dbUser}",
+        "--dbpass={dbPassword}",
+        "--fullname={title}",
+        "--shortname=digisite",
+        "--adminuser={adminUser}",
+        "--adminpass={adminPassword}",
+        "--adminemail={adminEmail}",
+        "--non-interactive",
+        "--agree-license"
+      ],
+      "timeoutSeconds": 1800
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "admin/cli/upgrade.php",
+        "--non-interactive"
+      ],
+      "timeoutSeconds": 1800
+    }
+  ]
+}

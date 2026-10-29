@@ -1,0 +1,73 @@
+{
+  "requiresDB": true,
+  "installMode": "composer",
+  "archiveType": "composer",
+  "configKind": "none",
+  "id": "magento",
+  "name": "Magento Open Source",
+  "category": "E-Commerce",
+  "latestVersion": "2.4.9",
+  "description": "Enterprise-grade e-commerce platform distributed through Composer.",
+  "homepage": "https://business.adobe.com/products/magento/magento-commerce.html",
+  "composerPackage": "magento/project-community-edition",
+  "composerVersion": "2.4.9",
+  "dbEngine": "mysql",
+  "adminPath": "/admin",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php",
+      "composer"
+    ],
+    "phpExtensions": [
+      "pdo_mysql",
+      "mbstring",
+      "xml",
+      "curl",
+      "openssl",
+      "intl",
+      "bcmath",
+      "gd",
+      "soap",
+      "sockets",
+      "sodium",
+      "zip"
+    ],
+    "phpVersion": ">=8.2 <8.5",
+    "env": [
+      "COMPOSER_AUTH",
+      "OPENSEARCH_HOST",
+      "OPENSEARCH_PORT"
+    ],
+    "minDiskMB": 4096,
+    "minRAMMB": 2048
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "bin/magento",
+        "setup:install",
+        "--base-url={siteURL}/",
+        "--db-host={dbHost}:{dbPort}",
+        "--db-name={dbName}",
+        "--db-user={dbUser}",
+        "--db-password={dbPassword}",
+        "--admin-user={adminUser}",
+        "--admin-password={adminPassword}",
+        "--admin-email={adminEmail}",
+        "--search-engine=opensearch",
+        "--opensearch-host={opensearchHost}",
+        "--opensearch-port={opensearchPort}",
+        "--backend-frontname=admin",
+        "--use-secure=1",
+        "--use-secure-admin=1",
+        "--use-rewrites=1",
+        "--no-interaction"
+      ],
+      "timeoutSeconds": 3600
+    }
+  ],
+  "notes": "Requires valid Adobe Marketplace credentials in COMPOSER_AUTH and a reachable OpenSearch endpoint in OPENSEARCH_HOST and OPENSEARCH_PORT."
+}

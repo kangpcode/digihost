@@ -1,0 +1,72 @@
+{
+  "requiresDB": true,
+  "installMode": "composer",
+  "archiveType": "composer",
+  "configKind": "laravel",
+  "id": "laravel",
+  "name": "Laravel",
+  "category": "Framework",
+  "latestVersion": "13.11.0",
+  "description": "PHP application framework with artisan tooling and migrations.",
+  "homepage": "https://laravel.com",
+  "composerPackage": "laravel/laravel",
+  "composerVersion": "13.11.0",
+  "dbEngine": "mysql",
+  "configFile": ".env",
+  "completionMode": "automatic",
+  "requirements": {
+    "binaries": [
+      "php",
+      "composer"
+    ],
+    "phpExtensions": [
+      "pdo_mysql",
+      "mbstring",
+      "xml",
+      "curl",
+      "openssl",
+      "tokenizer",
+      "ctype",
+      "json",
+      "bcmath",
+      "fileinfo"
+    ],
+    "phpVersion": ">=8.2",
+    "minDiskMB": 512,
+    "minRAMMB": 512
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "artisan",
+        "key:generate",
+        "--force"
+      ],
+      "timeoutSeconds": 300
+    },
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "artisan",
+        "migrate",
+        "--force"
+      ],
+      "timeoutSeconds": 900
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "php",
+      "args": [
+        "artisan",
+        "migrate",
+        "--force"
+      ],
+      "timeoutSeconds": 900
+    }
+  ]
+}

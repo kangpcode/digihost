@@ -1,0 +1,53 @@
+{
+  "requiresDB": true,
+  "installMode": "node",
+  "archiveType": "tar.gz",
+  "configKind": "ghost",
+  "id": "ghost",
+  "name": "Ghost",
+  "category": "CMS",
+  "latestVersion": "6.73.0",
+  "description": "Node.js publishing platform for professional blogs and newsletters.",
+  "homepage": "https://ghost.org",
+  "downloadURL": "https://github.com/TryGhost/Ghost/releases/download/v6.73.0/ghost-6.73.0.tgz",
+  "pinnedSHA256": "7377bf3a20eb5174494e35c512c0cd55dde346ae0c0de9390874a4c02ee918c2",
+  "dbEngine": "mysql",
+  "configFile": "config.production.json",
+  "adminPath": "/ghost",
+  "completionMode": "wizard",
+  "requirements": {
+    "binaries": [
+      "node",
+      "npm"
+    ],
+    "minDiskMB": 2048,
+    "minRAMMB": 1024
+  },
+  "steps": [
+    {
+      "kind": "exec",
+      "binary": "npm",
+      "args": [
+        "install",
+        "--omit=dev",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "timeoutSeconds": 3600
+    }
+  ],
+  "updateSteps": [
+    {
+      "kind": "exec",
+      "binary": "npm",
+      "args": [
+        "install",
+        "--omit=dev",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "timeoutSeconds": 3600
+    }
+  ],
+  "notes": "Ghost bootstraps its schema and first owner account through the browser. DigiPanel deploys the release, installs production dependencies, writes config.production.json, and leaves the final owner creation to /ghost."
+}
