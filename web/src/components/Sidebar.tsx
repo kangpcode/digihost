@@ -21,7 +21,10 @@ import {
   FileText,
   Activity,
   Network,
-  Boxes
+  Boxes,
+  Database,
+  HardDrive,
+  ShieldAlert
 } from 'lucide-react';
 import type { UserRole, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
@@ -113,6 +116,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'ssl', label: t('sslManagerTitle'), icon: Shield },
         { id: 'mail', label: t('mailManagerTitle'), icon: Mail },
         { id: 'files', label: t('navFiles'), icon: Folder },
+        { id: 'databases', label: t('navDatabases'), icon: Database },
+        { id: 'backups', label: t('navBackups'), icon: HardDrive },
+        { id: 'firewall', label: t('navFirewall'), icon: ShieldAlert },
         { id: 'access_logs', label: t('navAccessLogs'), icon: FileText },
         { id: 'audit', label: t('auditTitle'), icon: Shield },
       ]
@@ -161,6 +167,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dns', label: t('modalDnsEditorTitle'), icon: Globe },
         { id: 'ssl', label: t('sslManagerTitle'), icon: Shield },
         { id: 'mail', label: t('mailManagerTitle'), icon: Mail },
+        { id: 'databases', label: t('navDatabases'), icon: Database },
+        { id: 'backups', label: t('navBackups'), icon: HardDrive },
         { id: 'apps', label: t('navAppMarketplace'), icon: Boxes },
       ]
     },
@@ -180,6 +188,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'domains', label: t('navDomains'), icon: Globe, target: 'domains' },
     { id: 'files', label: t('navFiles'), icon: Folder, target: 'files' },
     { id: 'emails', label: t('navEmails'), icon: Mail, target: 'emails' },
+    { id: 'databases', label: t('navDatabases'), icon: Database, target: 'databases' },
+    { id: 'backups', label: t('navBackups'), icon: HardDrive, target: 'backups' },
     { id: 'apps', label: t('navAppMarketplace'), icon: Boxes, target: 'apps' },
     { id: 'runtimes', label: t('navRuntimes'), icon: Cpu, target: 'runtimes' },
     { id: 'metrics', label: t('navMetrics'), icon: BarChart3, target: 'server_status' },

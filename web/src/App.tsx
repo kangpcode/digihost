@@ -26,6 +26,9 @@ import { DnsClusterView } from './components/DnsClusterView';
 import { ServerStatusView } from './components/ServerStatusView';
 import { AuditLogView } from './components/AuditLogView';
 import { AccountLogsView } from './components/AccountLogsView';
+import { DatabasesView } from './components/DatabasesView';
+import { BackupsView } from './components/BackupsView';
+import { FirewallView } from './components/FirewallView';
 import { apiFetch, logout, readSession, setUnauthorizedHandler, type SessionToken } from './api/client';
 import { LoginView } from './components/LoginView';
 import { getTranslation } from './i18n/translations';
@@ -422,6 +425,18 @@ export const App: React.FC = () => {
 
             {(activeView === 'server_status' || (currentRole === 'admin' && activeView === 'metrics')) && (
               <ServerStatusView language={language} />
+            )}
+
+            {activeView === 'databases' && (
+              <DatabasesView language={language} />
+            )}
+
+            {activeView === 'backups' && (
+              <BackupsView language={language} />
+            )}
+
+            {currentRole === 'admin' && activeView === 'firewall' && (
+              <FirewallView language={language} />
             )}
 
             {currentRole === 'admin' && activeView === 'access_logs' && (
