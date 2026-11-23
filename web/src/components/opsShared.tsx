@@ -21,36 +21,38 @@ export const OpsHeader: React.FC<{
 );
 
 export const OpsError: React.FC<{ message: string; onDismiss?: () => void }> = ({ message, onDismiss }) => (
-  <div className="glass-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderColor: 'rgba(239, 68, 68, 0.35)' }}>
-    <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-    <span style={{ fontSize: '0.82rem', flex: 1 }}>{message}</span>
+  <div className="glass-card" style={{ padding: '13px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderColor: 'rgba(239, 68, 68, 0.35)', background: 'var(--status-danger-bg)' }}>
+    <AlertCircle size={16} style={{ color: 'var(--status-danger)', flexShrink: 0 }} />
+    <span style={{ fontSize: '0.83rem', flex: 1, fontWeight: 600 }}>{message}</span>
     {onDismiss ? (
       <button type="button" className="btn btn-secondary btn-sm" onClick={onDismiss}>
-        Dismiss
+        &times;
       </button>
     ) : null}
   </div>
 );
 
 export const OpsEmpty: React.FC<{ message: string; children?: React.ReactNode }> = ({ message, children }) => (
-  <div className="glass-panel" style={{ padding: '44px', textAlign: 'center' }}>
-    <Inbox size={28} style={{ color: 'var(--text-dim)', marginBottom: '10px' }} />
-    <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>{message}</p>
+  <div className="glass-panel" style={{ padding: '48px 32px', textAlign: 'center' }}>
+    <div className="clay-icon" style={{ width: '52px', height: '52px', margin: '0 auto 14px', background: 'var(--glass-surface)', color: 'var(--text-muted)' }}>
+      <Inbox size={24} />
+    </div>
+    <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)' }}>{message}</p>
     {children}
   </div>
 );
 
 export const UsageBar: React.FC<{ used: number; limit: number; label: string }> = ({ used, limit, label }) => {
   const ratio = limit > 0 ? Math.min(1, Math.max(0, used / limit)) : 0;
-  const colour = ratio >= 0.9 ? '#ef4444' : ratio >= 0.75 ? '#f59e0b' : 'var(--brand-primary)';
+  const colour = ratio >= 0.9 ? 'linear-gradient(90deg, #ef4444, #f97316)' : ratio >= 0.75 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, var(--brand-primary), var(--brand-accent))';
   return (
     <div style={{ minWidth: '130px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '3px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: 600 }}>
         <span>{label}</span>
-        <span>{Math.round(ratio * 100)}%</span>
+        <span className="font-mono">{Math.round(ratio * 100)}%</span>
       </div>
-      <div style={{ height: '5px', borderRadius: '999px', background: 'rgba(148, 163, 184, 0.18)', overflow: 'hidden' }}>
-        <div style={{ width: `${ratio * 100}%`, height: '100%', background: colour }} />
+      <div className="progress-bar-container">
+        <div className="progress-bar-fill" style={{ width: `${ratio * 100}%`, background: colour }} />
       </div>
     </div>
   );
