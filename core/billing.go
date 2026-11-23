@@ -93,18 +93,6 @@ func (store *InvoiceStore) list() []*Invoice {
 	return out
 }
 
-func (store *InvoiceStore) get(id string) (*Invoice, bool) {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	for _, item := range store.items {
-		if item.ID == id || item.InvoiceNumber == id {
-			copied := *item
-			return &copied, true
-		}
-	}
-	return nil, false
-}
-
 func (store *InvoiceStore) create(req createInvoiceRequest) (*Invoice, error) {
 	clientName := strings.TrimSpace(req.ClientName)
 	if len(clientName) < 2 || len(clientName) > 120 {

@@ -1758,9 +1758,10 @@ func NewServerHandler(state *ServerState) http.Handler {
 		var totalCredits int64 = 0
 
 		for _, item := range state.LedgerItems {
-			if item.Direction == "debit" {
+			switch item.Direction {
+			case "debit":
 				totalDebits += item.AmountCents
-			} else if item.Direction == "credit" {
+			case "credit":
 				totalCredits += item.AmountCents
 			}
 		}
