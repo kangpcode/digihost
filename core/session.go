@@ -443,3 +443,212 @@ func (state *ServerState) deleteUser(username string) error {
 	}
 	return nil
 }
+
+// ScopedAPIKey is a bearer key with explicit permission scopes and expiration.
+type ScopedAPIKey struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	OwnerUsername string    `json:"ownerUsername"`
+	Role          rbac.Role `json:"role"`
+	Scopes        []string  `json:"scopes"`
+	KeyPrefix     string    `json:"keyPrefix"`
+	KeyHash       string    `json:"-"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+	Revoked       bool      `json:"revoked"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// APIKeyStore manages scoped API keys in memory and optionally persists them
+// in PostgreSQL when dbstore is enabled.
+type APIKeyStore struct {
+	mu    sync.Mutex
+	items map[string]*ScopedAPIKey // hash -> key
+	db    *dbstore.Store
+}
+
+func NewAPIKeyStore(db *dbstore.Store) *APIKeyStore {
+	return &APIKeyStore{items: make(map[string]*ScopedAPIKey), db: db}
+}
+
+func (store *APIKeyStore) Create(name, owner string, role rbac.Role, scopes []string, ttl time.Duration) (*ScopedAPIKey, string, error) {
+	cleanName := strings.TrimSpace(name)
+	if len(cleanName) < 2 || len(cleanName) > 80 {
+		return nil, "", errors.New("API key name must be 2-80 characters")
+	}
+	if len(scopes) == 0 {
+		return nil, "", errors.New("at least one permission scope is required")
+	}
+	if ttl <= 0 {
+		ttl = 30 * 24 * time.Hour
+	}
+	rawSecret, err := randomToken(24)
+	if err != nil {
+		return nil, "", err
+	}
+	rawKey := "dpkey_" + rawSecret
+	keyHash := dbstore.HashToken(rawKey)
+	now := time.Now().UTC()
+	rec := &ScopedAPIKey{
+		ID:            "key-" + rawSecret[:12],
+		Name:          cleanName,
+		OwnerUsername: owner,
+		Role:          role,
+		Scopes:        append([]string(nil), scopes...),
+		KeyPrefix:     rawKey[:14],
+		KeyHash:       keyHash,
+		ExpiresAt:     now.Add(ttl),
+		CreatedAt:     now,
+	}
+
+	if store.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		created, err := store.db.CreateAPIKey(ctx, dbstore.APIKeyRecord{
+			Name:          rec.Name,
+			OwnerUsername: rec.OwnerUsername,
+			Role:          string(rec.Role),
+			Scopes:        rec.Scopes,
+			KeyPrefix:     rec.KeyPrefix,
+			KeyHash:       rec.KeyHash,
+			ExpiresAt:     rec.ExpiresAt,
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		rec.ID = created.ID
+	}
+
+	store.mu.Lock()
+	store.items[keyHash] = rec
+	store.mu.Unlock()
+	copied := *rec
+	return &copied, rawKey, nil
+}
+
+func (store *APIKeyStore) Resolve(rawKey string) (*ScopedAPIKey, error) {
+	if !strings.HasPrefix(rawKey, "dpkey_") {
+		return nil, ErrSessionNotFound
+	}
+	keyHash := dbstore.HashToken(rawKey)
+	store.mu.Lock()
+	rec, ok := store.items[keyHash]
+	store.mu.Unlock()
+	if ok {
+		if rec.Revoked || time.Now().UTC().After(rec.ExpiresAt) {
+			return nil, ErrSessionNotFound
+		}
+		copied := *rec
+		return &copied, nil
+	}
+	if store.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		dbRec, err := store.db.ResolveAPIKey(ctx, rawKey)
+		if err == nil {
+			resolved := &ScopedAPIKey{
+				ID:            dbRec.ID,
+				Name:          dbRec.Name,
+				OwnerUsername: dbRec.OwnerUsername,
+				Role:          rbac.Role(dbRec.Role),
+				Scopes:        dbRec.Scopes,
+				KeyPrefix:     dbRec.KeyPrefix,
+				KeyHash:       keyHash,
+				ExpiresAt:     dbRec.ExpiresAt,
+				Revoked:       dbRec.Revoked,
+				CreatedAt:     dbRec.CreatedAt,
+			}
+			store.mu.Lock()
+			store.items[keyHash] = resolved
+			store.mu.Unlock()
+			return resolved, nil
+		}
+	}
+	return nil, ErrSessionNotFound
+}
+
+func (store *APIKeyStore) List() []*ScopedAPIKey {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	out := make([]*ScopedAPIKey, 0, len(store.items))
+	for _, k := range store.items {
+		copied := *k
+		out = append(out, &copied)
+	}
+	return out
+}
+
+func (store *APIKeyStore) Revoke(id string) bool {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	found := false
+	for _, k := range store.items {
+		if k.ID == id {
+			k.Revoked = true
+			found = true
+		}
+	}
+	if store.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := store.db.RevokeAPIKey(ctx, "", id); err == nil {
+			found = true
+		}
+	}
+	return found
+}
+
+func (k *ScopedAPIKey) Allows(permission string) bool {
+	if !rbac.HasPermission(k.Role, permission) {
+		return false
+	}
+	for _, scope := range k.Scopes {
+		if scope == "*" || scope == permission {
+			return true
+		}
+	}
+	return false
+}
+
+// isAdminIPAllowed checks whether clientAddr matches the configured admin IP allowlist.
+// An empty allowlist allows any authenticated admin origin.
+func isAdminIPAllowed(clientAddr string, allowlist []string) bool {
+	if len(allowlist) == 0 {
+		return true
+	}
+	host := strings.TrimSpace(clientAddr)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	parsed := net.ParseIP(host)
+	for _, entry := range allowlist {
+		clean := strings.TrimSpace(entry)
+		if clean == "" {
+			continue
+		}
+		if clean == host {
+			return true
+		}
+		if _, cidr, err := net.ParseCIDR(clean); err == nil && parsed != nil && cidr.Contains(parsed) {
+			return true
+		}
+	}
+	return false
+}
+
+func (state *ServerState) actorUsername(r *http.Request) string {
+	token := bearerToken(r)
+	if token == "" {
+		return "anonymous"
+	}
+	if state.Sessions != nil {
+		if s, err := state.Sessions.Resolve(token); err == nil {
+			return s.Username
+		}
+	}
+	if state.APIKeys != nil {
+		if k, err := state.APIKeys.Resolve(token); err == nil {
+			return "apikey:" + k.OwnerUsername + ":" + k.Name
+		}
+	}
+	return "anonymous"
+}
