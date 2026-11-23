@@ -264,6 +264,87 @@ func (cm *ClusterManager) ListNodes() []*ManagedClusterNode {
 	return out
 }
 
+// PollNodes probes each registered cluster node over pinned TLS 1.3 mTLS and
+// transitions unreachable nodes to "offline" so failover decisions use live health.
+func (cm *ClusterManager) PollNodes(bearerSecret string) []ManagedClusterNode {
+	cm.mu.RLock()
+	snapshot := make([]*ManagedClusterNode, 0, len(cm.nodes))
+	for _, n := range cm.nodes {
+		cp := *n
+		snapshot = append(snapshot, &cp)
+	}
+	cm.mu.RUnlock()
+
+	results := make([]ManagedClusterNode, 0, len(snapshot))
+	for _, n := range snapshot {
+		client := cm.PinnedHTTPClient(n.CertFingerprint)
+		req, err := http.NewRequest(http.MethodGet, n.EndpointURL+"/api/v1/cluster/node/health", nil)
+		now := time.Now().UTC()
+		nextStatus := "offline"
+		var services []ServiceState
+		var panelVer string
+		if err == nil {
+			if bearerSecret != "" {
+				req.Header.Set("Authorization", "Bearer "+bearerSecret)
+			}
+			resp, doErr := client.Do(req)
+			if doErr == nil {
+				if resp.StatusCode == http.StatusOK {
+					var health struct {
+						PanelVersion string         `json:"panelVersion"`
+						Services     []ServiceState `json:"services"`
+					}
+					_ = json.NewDecoder(resp.Body).Decode(&health)
+					nextStatus = "online"
+					services = health.Services
+					panelVer = health.PanelVersion
+				}
+				_ = resp.Body.Close()
+			}
+		}
+
+		cm.mu.Lock()
+		if live, ok := cm.nodes[n.ID]; ok {
+			live.Status = nextStatus
+			live.LastPollAt = now
+			if nextStatus == "online" {
+				live.Services = services
+				if panelVer != "" {
+					live.PanelVersion = panelVer
+				}
+			}
+			results = append(results, *live)
+		}
+		cm.mu.Unlock()
+	}
+	return results
+}
+
+// SelectHealthyNode returns the preferred node when online, or fails over to
+// another healthy online node when available.
+func (cm *ClusterManager) SelectHealthyNode(preferredID string) (*ManagedClusterNode, string, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	if preferredID != "" && preferredID != "auto" {
+		if pref, ok := cm.nodes[preferredID]; ok && pref.Status == "online" {
+			cp := *pref
+			return &cp, "", nil
+		}
+	}
+	for _, n := range cm.nodes {
+		if n.ID != preferredID && n.Status == "online" {
+			cp := *n
+			failoverFrom := ""
+			if preferredID != "" && preferredID != "auto" {
+				failoverFrom = preferredID
+			}
+			return &cp, failoverFrom, nil
+		}
+	}
+	return nil, "", errors.New("no healthy online cluster node available")
+}
+
 func (state *ServerState) clusterManager() *ClusterManager {
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -398,6 +479,34 @@ func (state *ServerState) handleClusterConnectNode(w http.ResponseWriter, r *htt
 	_ = json.NewEncoder(w).Encode(node)
 }
 
+func (state *ServerState) handleClusterPollNodes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		NodeToken string `json:"nodeToken"`
+	}
+	_ = decodeJSONBody(w, r, &req)
+	nodes := state.clusterManager().PollNodes(req.NodeToken)
+	online := 0
+	offline := 0
+	for _, n := range nodes {
+		if n.Status == "online" {
+			online++
+		} else {
+			offline++
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"polled":  len(nodes),
+		"online":  online,
+		"offline": offline,
+		"nodes":   nodes,
+	})
+}
+
 func (state *ServerState) handleClusterNodeHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -489,9 +598,10 @@ func (state *ServerState) handleClusterMigrateAccount(w http.ResponseWriter, r *
 		return
 	}
 	var req struct {
-		Username     string `json:"username"`
-		TargetNodeID string `json:"targetNodeId"`
-		NodeToken    string `json:"nodeToken"`
+		Username      string `json:"username"`
+		TargetNodeID  string `json:"targetNodeId"`
+		NodeToken     string `json:"nodeToken"`
+		AllowFailover bool   `json:"allowFailover"`
 	}
 	if err := decodeJSONBody(w, r, &req); err != nil {
 		writeAPIError(w, "Invalid migration payload: "+err.Error(), http.StatusBadRequest)
@@ -504,12 +614,29 @@ func (state *ServerState) handleClusterMigrateAccount(w http.ResponseWriter, r *
 	}
 
 	cm := state.clusterManager()
-	cm.mu.RLock()
-	targetNode, ok := cm.nodes[req.TargetNodeID]
-	cm.mu.RUnlock()
-	if !ok {
-		writeAPIError(w, "target node not found", http.StatusNotFound)
-		return
+	var targetNode *ManagedClusterNode
+	var failoverFrom string
+
+	if req.AllowFailover || req.TargetNodeID == "auto" {
+		selected, fromID, selErr := cm.SelectHealthyNode(req.TargetNodeID)
+		if selErr != nil {
+			writeAPIError(w, selErr.Error(), http.StatusBadGateway)
+			return
+		}
+		targetNode = selected
+		failoverFrom = fromID
+	} else {
+		cm.mu.RLock()
+		node, ok := cm.nodes[req.TargetNodeID]
+		if ok {
+			cp := *node
+			targetNode = &cp
+		}
+		cm.mu.RUnlock()
+		if !ok {
+			writeAPIError(w, "target node not found", http.StatusNotFound)
+			return
+		}
 	}
 
 	bundle, checksum, err := archiveDirectoryTarGz(acc.HomeDir)
@@ -528,17 +655,32 @@ func (state *ServerState) handleClusterMigrateAccount(w http.ResponseWriter, r *
 		"archiveB64": base64.StdEncoding.EncodeToString(bundle),
 	})
 
-	client := cm.PinnedHTTPClient(targetNode.CertFingerprint)
-	httpReq, err := http.NewRequest(http.MethodPost, targetNode.EndpointURL+"/api/v1/cluster/node/receive-migration", bytes.NewReader(payload))
-	if err != nil {
-		writeAPIError(w, err.Error(), http.StatusInternalServerError)
-		return
+	sendMigration := func(node *ManagedClusterNode) (*http.Response, error) {
+		client := cm.PinnedHTTPClient(node.CertFingerprint)
+		httpReq, reqErr := http.NewRequest(http.MethodPost, node.EndpointURL+"/api/v1/cluster/node/receive-migration", bytes.NewReader(payload))
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if req.NodeToken != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+req.NodeToken)
+		}
+		return client.Do(httpReq)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if req.NodeToken != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+req.NodeToken)
+
+	resp, err := sendMigration(targetNode)
+	if err != nil && req.AllowFailover {
+		cm.mu.Lock()
+		if live, ok := cm.nodes[targetNode.ID]; ok {
+			live.Status = "offline"
+		}
+		cm.mu.Unlock()
+		if fallback, fromID, fbErr := cm.SelectHealthyNode(targetNode.ID); fbErr == nil {
+			failoverFrom = fromID
+			targetNode = fallback
+			resp, err = sendMigration(targetNode)
+		}
 	}
-	resp, err := client.Do(httpReq)
 	if err != nil {
 		writeAPIError(w, "mTLS migration transfer failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -551,12 +693,13 @@ func (state *ServerState) handleClusterMigrateAccount(w http.ResponseWriter, r *
 	}
 
 	state.AuditLogger.Append(state.actorUsername(r), "cluster.account.migrate", "account", acc.Username,
-		fmt.Sprintf(`{"targetNode":%q,"checksum":%q}`, targetNode.ID, checksum), clientIP(r, state.TrustedProxies))
+		fmt.Sprintf(`{"targetNode":%q,"failoverFrom":%q,"checksum":%q}`, targetNode.ID, failoverFrom, checksum), clientIP(r, state.TrustedProxies))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"migrated":     true,
 		"username":     acc.Username,
 		"targetNodeId": targetNode.ID,
+		"failoverFrom": failoverFrom,
 		"checksum":     checksum,
 	})
 }

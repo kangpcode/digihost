@@ -130,4 +130,48 @@ func TestNativeBillingRESTLifecycle(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("reports expected 200, got %d", rr.Code)
 	}
+
+	// 7. Xendit invalid callback token rejected with 401, valid token accepted & idempotent
+	state.billingEngine().SetGatewaySecret("xendit", "xendit-rest-secret")
+	xBody, _ := json.Marshal(map[string]string{
+		"id":          "XND-100",
+		"external_id": ordResp.Invoice.ID,
+		"status":      "PAID",
+	})
+	req, _ = http.NewRequest("POST", "/api/v1/billing/webhooks/xendit", bytes.NewReader(xBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Callback-Token", "wrong-token")
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid xendit callback token expected 401, got %d", rr.Code)
+	}
+
+	req, _ = http.NewRequest("POST", "/api/v1/billing/webhooks/xendit", bytes.NewReader(xBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Callback-Token", "xendit-rest-secret")
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("valid xendit webhook expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 8. Refund via REST maintains double-entry ledger balance
+	refBody, _ := json.Marshal(map[string]any{
+		"invoiceId":   ordResp.Invoice.ID,
+		"refundCents": 25000,
+		"reason":      "rest partial refund",
+	})
+	req, _ = http.NewRequest("POST", "/api/v1/billing/invoices/refund", bytes.NewReader(refBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("refund expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	_, debits, credits, balanced := state.billingEngine().LedgerSummary()
+	if !balanced || debits != credits {
+		t.Fatalf("billing ledger unbalanced after REST refund: debits=%d credits=%d", debits, credits)
+	}
 }

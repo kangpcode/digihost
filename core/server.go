@@ -245,7 +245,10 @@ var routeRequiredPermissions = map[string]string{
 	"GET /api/v1/billing/gdpr/export":         "billing.invoices.read",
 	"POST /api/v1/billing/gdpr/anonymize":     "billing.invoices.write",
 	"POST /api/v1/cluster/nodes/connect":      "system.fleet.write",
+	"POST /api/v1/cluster/nodes/poll":         "system.fleet.write",
 	"GET /api/v1/cluster/node/health":         "system.fleet.read",
+	"POST /api/v1/terminal/exec":              "terminal.exec",
+	"POST /api/v1/tasks/enqueue":              "system.modules.manage",
 	"POST /api/v1/cluster/dns/sync":           "dns.write",
 	"POST /api/v1/cluster/node/dns-apply":     "dns.write",
 	"POST /api/v1/cluster/migrate":            "system.fleet.write",
@@ -283,6 +286,7 @@ var routeRequiredPermissions = map[string]string{
 	"POST /api/v1/hosting/accounts/terminate": "accounts.terminate",
 	"POST /api/v1/hosting/accounts/package":   "accounts.modify_package",
 	"GET /api/v1/hosting/accounts/usage":      "accounts.read",
+	"POST /api/v1/hosting/import":             "accounts.create",
 	"GET /api/v1/dns/zones":                   "dns.read",
 	"POST /api/v1/dns/zones":                  "dns.write",
 	"GET /api/v1/dns/records":                 "dns.read",
@@ -596,6 +600,9 @@ func clientIP(r *http.Request, trustedProxies []string) string {
 	}
 	if !isTrustedProxy(peer, trustedProxies) {
 		return peer
+	}
+	if cfIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cfIP != "" {
+		return cfIP
 	}
 	forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0])
 	if forwarded != "" {
@@ -1010,6 +1017,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 	// Cluster Hub/Node mTLS & Multi-Tenant SaaS (Tahap 9)
 	mux.HandleFunc("/api/v1/branding", state.handlePublicBranding)
 	mux.HandleFunc("/api/v1/cluster/nodes/connect", state.handleClusterConnectNode)
+	mux.HandleFunc("/api/v1/cluster/nodes/poll", state.handleClusterPollNodes)
 	mux.HandleFunc("/api/v1/cluster/node/health", state.handleClusterNodeHealth)
 	mux.HandleFunc("/api/v1/cluster/dns/sync", state.handleClusterDNSSync)
 	mux.HandleFunc("/api/v1/cluster/node/dns-apply", state.handleClusterDNSApply)
@@ -1019,6 +1027,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 	mux.HandleFunc("/api/v1/saas/tenants/branding", state.handleSaaSTenantBranding)
 	mux.HandleFunc("/api/v1/saas/tenants/subscription", state.handleSaaSTenantSubscription)
 	mux.HandleFunc("/api/v1/saas/tenants/usage", state.handleSaaSTenantUsage)
+	mux.HandleFunc("/api/v1/hosting/import", state.handleHostingImport)
 
 	// Native invoice ledger.
 	mux.HandleFunc("/api/v1/billing/invoices", state.handleInvoices)
@@ -1284,7 +1293,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 			outputStr = err.Error()
 		}
 
-		state.AuditLogger.Append("admin", "terminal.exec", "system", binary, fmt.Sprintf(`{"cmd":"%s"}`, binary), r.RemoteAddr)
+		state.AuditLogger.Append(state.actorUsername(r), "terminal.exec", "system", binary, fmt.Sprintf(`{"cmd":%q}`, binary), clientIP(r, state.TrustedProxies))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1338,6 +1347,16 @@ func NewServerHandler(state *ServerState) http.Handler {
 			state.mu.RUnlock()
 			if panelExists {
 				writeAPIError(w, "A panel identity already uses this username", http.StatusConflict)
+				return
+			}
+
+			tenantID := strings.TrimSpace(body.TenantID)
+			if tenantID == "" {
+				tenantID = "tenant-default"
+			}
+			currentTenantAccounts := len(FilterAccountsByTenant(state.HostingManager.ListAccounts(), tenantID))
+			if err := state.tenantManager().CanProvisionAccount(tenantID, currentTenantAccounts); err != nil {
+				writeAPIError(w, err.Error(), http.StatusForbidden)
 				return
 			}
 
@@ -1831,8 +1850,27 @@ func NewServerHandler(state *ServerState) http.Handler {
 
 		if r.Method == "POST" {
 			var newRec DnsRecord
-			if err := json.NewDecoder(r.Body).Decode(&newRec); err != nil {
-				http.Error(w, "Bad request", http.StatusBadRequest)
+			if err := decodeJSONBody(w, r, &newRec); err != nil {
+				writeAPIError(w, "Invalid DNS record payload: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			newRec.Type = strings.ToUpper(strings.TrimSpace(newRec.Type))
+			if newRec.TTL == 0 {
+				newRec.TTL = 300
+			}
+			if err := dns.ValidateZoneName(newRec.Domain); err != nil {
+				writeAPIError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := dns.ValidateRecord(dns.Record{
+				Zone:     newRec.Domain,
+				Name:     newRec.Name,
+				Type:     dns.RecordType(newRec.Type),
+				Value:    newRec.Content,
+				TTL:      newRec.TTL,
+				Priority: newRec.Priority,
+			}); err != nil {
+				writeAPIError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			newRec.ID = fmt.Sprintf("rec-%d", time.Now().UnixNano())

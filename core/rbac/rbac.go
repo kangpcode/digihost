@@ -72,9 +72,11 @@ var rolePermissions = map[Role]map[string]bool{
 		"backup.delete":           true,
 		"firewall.read":           true,
 		"firewall.write":          true,
+		"terminal.exec":           true,
 	},
 	RoleReseller: {
 		"system.telemetry.view":   true,
+		"terminal.exec":           true,
 		"accounts.create":         true,
 		"accounts.read":           true,
 		"accounts.suspend":        true,
@@ -107,6 +109,7 @@ var rolePermissions = map[Role]map[string]bool{
 	},
 	RoleUser: {
 		"system.telemetry.view": true,
+		"terminal.exec":         true,
 		"accounts.read":         true,
 		"dns.read":              true,
 		"dns.write":             true,

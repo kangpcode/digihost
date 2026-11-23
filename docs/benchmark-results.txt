@@ -1,0 +1,24 @@
+# DigiPanel Benchmark Raw Output
+Date: 2026-11-23T04:15:15Z
+Host: Linux 7.0.0-43-generic x86_64
+
+=== RUN   TestAPILatencyP95UnderTarget
+softinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-434849724/softinstaller/catalog: no such file or directory
+    benchmark_test.go:47: API /api/v1/hosting/accounts 200-concurrent latency: p50=11.712µs p95=141.716µs max=229.22µs
+--- PASS: TestAPILatencyP95UnderTarget (0.14s)
+PASS
+ok  	digipanel/core	0.164s
+
+softinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-1596051915/softinstaller/catalog: no such file or directory
+goos: linux
+goarch: amd64
+pkg: digipanel/core
+cpu: AMD Ryzen 5 6600H with Radeon Graphics         
+BenchmarkAuthenticatedAccountsAPI-12    	softinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-1152733650/softinstaller/catalog: no such file or directory
+softinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-2639834212/softinstaller/catalog: no such file or directory
+softinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-3438268919/softinstaller/catalog: no such file or directory
+  481916	      3317 ns/op	    2636 B/op	      29 allocs/op
+PASS
+ok  	digipanel/core	2.102s
+PASS
+ok  	digipanel/modules/billing	0.006s

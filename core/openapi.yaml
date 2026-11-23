@@ -628,6 +628,11 @@ paths:
       summary: Connect a remote cluster node with pinned mTLS certificate verification
       security: [{ BearerAuth: [] }]
       responses: { '201': { description: Connected node } }
+  /cluster/nodes/poll:
+    post:
+      summary: Poll cluster nodes over mTLS and update online/offline health state
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Node health poll summary } }
   /cluster/dns/sync:
     post:
       summary: Synchronize DNS zones across all connected mTLS nodes
@@ -638,6 +643,11 @@ paths:
       summary: Migrate a hosting account over mTLS with SHA-256 checksum verification
       security: [{ BearerAuth: [] }]
       responses: { '200': { description: Migration summary } }
+  /hosting/import:
+    post:
+      summary: One-step migration importer for cPanel, Plesk, DirectAdmin, HestiaCP, and aaPanel with dry-run mode
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Migration report } }
 
   /branding:
     get:

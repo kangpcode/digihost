@@ -1,0 +1,73 @@
+{
+  "timestamp_utc": "2026-11-23T04:21:00.787344+00:00",
+  "host": {
+    "system": "Linux",
+    "release": "7.0.0-43-generic",
+    "machine": "x86_64",
+    "cpu_count": 12
+  },
+  "digipanel_version": "1.0.0",
+  "idle_rss": {
+    "samples": [
+      {
+        "run": 1,
+        "core_rss_mb": 78.24,
+        "agent_rss_mb": 5.75,
+        "total_rss_mb": 83.99
+      },
+      {
+        "run": 2,
+        "core_rss_mb": 78.55,
+        "agent_rss_mb": 5.8,
+        "total_rss_mb": 84.34
+      },
+      {
+        "run": 3,
+        "core_rss_mb": 78.49,
+        "agent_rss_mb": 5.78,
+        "total_rss_mb": 84.27
+      },
+      {
+        "run": 4,
+        "core_rss_mb": 78.5,
+        "agent_rss_mb": 5.78,
+        "total_rss_mb": 84.29
+      },
+      {
+        "run": 5,
+        "core_rss_mb": 78.41,
+        "agent_rss_mb": 5.84,
+        "total_rss_mb": 84.24
+      }
+    ],
+    "median_mb": 84.27,
+    "min_mb": 83.99,
+    "max_mb": 84.34,
+    "target_mb": 200.0,
+    "passed": true
+  },
+  "go_benchmarks": {
+    "api_200_concurrent": {
+      "runs": "45.024\u00b5s 118.082\u00b5s 130.074\u00b5s 258.406\u00b5s 311.296\u00b5s",
+      "median_p95": "130.074\u00b5s",
+      "min_p95": "45.024\u00b5s",
+      "max_p95": "311.296\u00b5s",
+      "target": "< 300ms",
+      "passed": true
+    },
+    "sequential_100_accounts": {
+      "totals_5_runs": "5.184751688s 5.628955104s 5.873940362s 4.875492517s 5.919070663s",
+      "median_per_account": "47.853698ms",
+      "median_p95_per_account": "129.849265ms",
+      "target": "median < 3s",
+      "passed": true
+    },
+    "cve_regression_suite": {
+      "passed": true,
+      "target": "100% pass"
+    },
+    "raw_go_test_output": "=== RUN   TestAPILatencyP95UnderTarget\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-4105899660/softinstaller/catalog: no such file or directory\n    benchmark_test.go:54: API 200-concurrent p95 across 5 runs: runs=[45.024\u00b5s 118.082\u00b5s 130.074\u00b5s 258.406\u00b5s 311.296\u00b5s] median=130.074\u00b5s min=45.024\u00b5s max=311.296\u00b5s\n--- PASS: TestAPILatencyP95UnderTarget (0.14s)\n=== RUN   TestBenchmark100SequentialAccounts5Runs\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-3948009923/softinstaller/catalog: no such file or directory\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-1687742125/softinstaller/catalog: no such file or directory\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-3463395976/softinstaller/catalog: no such file or directory\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-3910635269/softinstaller/catalog: no such file or directory\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-1554801030/softinstaller/catalog: no such file or directory\n    benchmark_test.go:101: 100-account provisioning (user+vhost+dns+mail) x 5 runs: totals=[5.184751688s 5.628955104s 5.873940362s 4.875492517s 5.919070663s] median_per_account=47.853698ms median_p95=129.849265ms\n--- PASS: TestBenchmark100SequentialAccounts5Runs (27.83s)\n=== RUN   TestCompetitorCVERegressionSuite\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-3478251198/softinstaller/catalog: no such file or directory\n--- PASS: TestCompetitorCVERegressionSuite (0.28s)\nPASS\nok  \tdigipanel/core\t28.276s",
+    "raw_go_microbench_output": "softinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-140478365/softinstaller/catalog: no such file or directory\ngoos: linux\ngoarch: amd64\npkg: digipanel/core\ncpu: AMD Ryzen 5 6600H with Radeon Graphics         \nBenchmarkAuthenticatedAccountsAPI-12    \tsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-2461746091/softinstaller/catalog: no such file or directory\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-2118504871/softinstaller/catalog: no such file or directory\nsoftinstaller: catalogue directory unavailable: stat /tmp/digipanel-integ-test-2604549364/softinstaller/catalog: no such file or directory\n  512206\t      3319 ns/op\t    2636 B/op\t      29 allocs/op\nPASS\nok  \tdigipanel/core\t2.165s\nPASS\nok  \tdigipanel/modules/billing\t0.006s"
+  },
+  "competitor_status": "Pending clean-VM execution and EULA review; no competitor numbers fabricated."
+}

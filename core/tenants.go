@@ -299,6 +299,34 @@ func (tm *TenantManager) ListTenants() []*Tenant {
 	return out
 }
 
+// CanProvisionAccount enforces active tenant status and SaaS MaxAccounts quota.
+func (tm *TenantManager) CanProvisionAccount(tenantID string, currentAccounts int) error {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	t, ok := tm.tenants[tenantID]
+	if !ok {
+		return errors.New("tenant not found")
+	}
+	if !t.IsActive || t.Subscription.Status == "suspended" || t.Subscription.Status == "cancelled" {
+		return fmt.Errorf("tenant %s subscription is %s", t.Slug, t.Subscription.Status)
+	}
+	if t.Subscription.MaxAccounts > 0 && currentAccounts >= t.Subscription.MaxAccounts {
+		return fmt.Errorf("tenant %s reached SaaS account quota (%d)", t.Slug, t.Subscription.MaxAccounts)
+	}
+	return nil
+}
+
+// FilterAccountsByTenant returns strictly the accounts owned by tenantID.
+func FilterAccountsByTenant(accounts []*hosting.HostingAccount, tenantID string) []*hosting.HostingAccount {
+	out := make([]*hosting.HostingAccount, 0)
+	for _, acc := range accounts {
+		if acc.TenantID == tenantID {
+			out = append(out, acc)
+		}
+	}
+	return out
+}
+
 func (state *ServerState) tenantManager() *TenantManager {
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -418,12 +446,7 @@ func (state *ServerState) handleSaaSTenantUsage(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	var tenantAccounts []*hosting.HostingAccount
-	for _, acc := range state.HostingManager.ListAccounts() {
-		if acc.TenantID == tenantID {
-			tenantAccounts = append(tenantAccounts, acc)
-		}
-	}
+	tenantAccounts := FilterAccountsByTenant(state.HostingManager.ListAccounts(), tenantID)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"tenantId":     t.ID,

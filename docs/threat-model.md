@@ -1,8 +1,8 @@
 # DigiPanel Threat Model (STRIDE) and Security Architecture
 
 Platform: DigiPanel Unified Hosting Platform
-Scope: Core daemon, agent, web panels, multi-tenant boundaries, billing subsystem, and cluster fleet
-Version: 1.0.0 (Tahap 0 Fondasi)
+Scope: Core daemon, agent, web panels, multi-tenant boundaries, billing subsystem, cluster fleet, and signed releases
+Version: 1.1.0 (Updated through Tahap 10 Audit & Release)
 
 ## 1. System Overview and Trust Boundaries
 
@@ -54,3 +54,19 @@ DigiPanel operates with three primary trust tiers:
 9. **Unprivileged Main Daemon**: Core daemon runs without root privileges under AppArmor/SELinux profiles.
 10. **24-Hour Emergency Patch Pipeline**: Verified patch workflow capable of hotfix delivery within 24 hours with automated health-check rollbacks.
 11. **Competitor CVE Regression Test Suite**: Automated tests ensuring resilience against known vulnerability patterns from competing platforms.
+
+---
+
+## 4. Tahap 8-10 Subsystem Threat Mitigations
+
+- **Native Billing (`modules/billing`, `core/billing_api.go`)**:
+  - Integer-only currency arithmetic (`int64` minor units) eliminates floating-point rounding drift.
+  - Webhook receiver routes (`/api/v1/billing/webhooks/{gateway}`) enforce constant-time cryptographic signature verification (SHA-512 for Midtrans, HMAC-SHA256 for Stripe/PayPal, constant-time token for Xendit) and idempotency keys to block replay and forged settlement attacks.
+  - Double-entry ledger entries enforce `Debits == Credits` across invoice issuance, payment settlement, and refunds.
+- **Cluster Hub/Node mTLS & Live Migration (`core/cluster.go`)**:
+  - Dedicated ECDSA P-256 Cluster CA with TLS 1.3 `RequireAndVerifyClientCert` and leaf SHA-256 fingerprint pinning rejects unpinned/forged nodes.
+  - Account migration tar.gz extraction validates clean relative paths (blocking `../` path traversal) and skips symlinks, rolling back target account creation if archive verification or extraction fails.
+- **Multi-Tenant SaaS (`core/tenants.go`, `core/dbstore/`)**:
+  - Tenant boundaries isolate usage queries and enforce subscription status (`suspended`/`cancelled` blocked) and `MaxAccounts` quotas at provisioning time, backed by PostgreSQL Row-Level Security (RLS) policies in `core/dbstore/migrations/`.
+- **Signed Release Pipeline (`scripts/build_release.sh`, `scripts/generate_sbom.sh`)**:
+  - Static binaries (`CGO_ENABLED=0`) ship with CycloneDX SBOM, `SHA256SUMS`, and ECDSA P-256 signature verification (`SHA256SUMS.sig`).
