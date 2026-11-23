@@ -1377,7 +1377,18 @@ func NewServerHandler(state *ServerState) http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		state.AuditLogger.Append("admin", "account.unsuspend", "account", req.Username, `{"status":"active"}`, r.RemoteAddr)
+		if state.Agent != nil && state.Agent.Available() {
+			acc, _ := state.HostingManager.GetAccount(req.Username)
+			domain := ""
+			if acc != nil {
+				domain = acc.PrimaryDomain
+			}
+			_, _ = state.Agent.Call(r.Context(), "account.unsuspend", map[string]string{
+				"username": req.Username,
+				"domain":   domain,
+			})
+		}
+		state.AuditLogger.Append(state.actorUsername(r), "account.unsuspend", "account", req.Username, `{"status":"active"}`, clientIP(r, state.TrustedProxies))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"unsuspended": true})
 	})
@@ -1394,11 +1405,22 @@ func NewServerHandler(state *ServerState) http.Handler {
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
+		accBefore, _ := state.HostingManager.GetAccount(req.Username)
 		if err := state.HostingManager.TerminateAccount(req.Username); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		state.AuditLogger.Append("admin", "account.terminate", "account", req.Username, `{"status":"terminated"}`, r.RemoteAddr)
+		if state.Agent != nil && state.Agent.Available() && accBefore != nil {
+			_, _ = state.Agent.Call(r.Context(), "account.remove_vhost", map[string]string{
+				"username":    accBefore.Username,
+				"domain":      accBefore.PrimaryDomain,
+				"php_version": accBefore.PhpVersion,
+			})
+			_, _ = state.Agent.Call(r.Context(), "user.delete_posix", map[string]string{
+				"username": accBefore.Username,
+			})
+		}
+		state.AuditLogger.Append(state.actorUsername(r), "account.terminate", "account", req.Username, `{"status":"terminated"}`, clientIP(r, state.TrustedProxies))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"terminated": true})
 	})
@@ -2398,4 +2420,57 @@ func writeInstallerError(w http.ResponseWriter, err error) {
 		status = http.StatusBadGateway
 	}
 	writeAPIError(w, err.Error(), status)
+}
+
+func (state *ServerState) handleAPIKeys(w http.ResponseWriter, r *http.Request) {
+	session, err := state.Sessions.Resolve(bearerToken(r))
+	if err != nil {
+		writeAPIError(w, "Session token required for API key management", http.StatusUnauthorized)
+		return
+	}
+	clientAddress := clientIP(r, state.TrustedProxies)
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.APIKeys.List())
+	case http.MethodPost:
+		var req struct {
+			Name    string   `json:"name"`
+			Scopes  []string `json:"scopes"`
+			TTLDays int      `json:"ttlDays"`
+		}
+		if err := decodeJSONBody(w, r, &req); err != nil {
+			writeAPIError(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		ttl := time.Duration(req.TTLDays) * 24 * time.Hour
+		created, rawKey, err := state.APIKeys.Create(req.Name, session.Username, session.Role, req.Scopes, ttl)
+		if err != nil {
+			writeAPIError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		state.AuditLogger.Append(session.Username, "auth.apikey.create", "apikey", created.ID,
+			fmt.Sprintf(`{"name":%q,"scopesCount":%d}`, created.Name, len(created.Scopes)), clientAddress)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"apiKey": created,
+			"token":  rawKey,
+		})
+	case http.MethodDelete:
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if id == "" {
+			writeAPIError(w, "id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		if !state.APIKeys.Revoke(id) {
+			writeAPIError(w, "API key not found", http.StatusNotFound)
+			return
+		}
+		state.AuditLogger.Append(session.Username, "auth.apikey.revoke", "apikey", id, `{}`, clientAddress)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"revoked": true})
+	default:
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
