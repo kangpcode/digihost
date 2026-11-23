@@ -29,11 +29,11 @@ const (
 // account. A client role is confined to its own account; elevated roles are
 // governed by the route permissions in the RBAC table.
 func (state *ServerState) authorizeAccountScope(r *http.Request, username string) error {
-	session, err := state.Sessions.Resolve(bearerToken(r))
+	identity, err := state.resolveIdentity(r)
 	if err != nil {
 		return os.ErrPermission
 	}
-	if session.Role == rbac.RoleUser && session.Username != username {
+	if identity.Role == rbac.RoleUser && identity.Username != username {
 		return os.ErrPermission
 	}
 	return nil

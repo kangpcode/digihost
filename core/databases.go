@@ -316,9 +316,5 @@ func (state *ServerState) handleDatabaseUsers(w http.ResponseWriter, r *http.Req
 
 // actorFor returns the authenticated username for audit records.
 func (state *ServerState) actorFor(r *http.Request) string {
-	session, err := state.Sessions.Resolve(bearerToken(r))
-	if err != nil {
-		return "anonymous"
-	}
-	return session.Username
+	return state.actorUsername(r)
 }

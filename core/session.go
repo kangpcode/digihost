@@ -638,20 +638,57 @@ func isAdminIPAllowed(clientAddr string, allowlist []string) bool {
 	return false
 }
 
-func (state *ServerState) actorUsername(r *http.Request) string {
+// RequestIdentity represents the authenticated actor resolved from either a
+// live login session or a scoped API key.
+type RequestIdentity struct {
+	Username  string
+	Role      rbac.Role
+	ExpiresAt time.Time
+	IsAPIKey  bool
+}
+
+func (state *ServerState) resolveIdentity(r *http.Request) (*RequestIdentity, error) {
 	token := bearerToken(r)
 	if token == "" {
+		return nil, ErrSessionNotFound
+	}
+	if strings.HasPrefix(token, "dpkey_") {
+		if state.APIKeys == nil {
+			return nil, ErrSessionNotFound
+		}
+		k, err := state.APIKeys.Resolve(token)
+		if err != nil {
+			return nil, err
+		}
+		return &RequestIdentity{
+			Username:  k.OwnerUsername,
+			Role:      k.Role,
+			ExpiresAt: k.ExpiresAt,
+			IsAPIKey:  true,
+		}, nil
+	}
+	if state.Sessions == nil {
+		return nil, ErrSessionNotFound
+	}
+	s, err := state.Sessions.Resolve(token)
+	if err != nil {
+		return nil, err
+	}
+	return &RequestIdentity{
+		Username:  s.Username,
+		Role:      s.Role,
+		ExpiresAt: s.ExpiresAt,
+		IsAPIKey:  false,
+	}, nil
+}
+
+func (state *ServerState) actorUsername(r *http.Request) string {
+	id, err := state.resolveIdentity(r)
+	if err != nil {
 		return "anonymous"
 	}
-	if state.Sessions != nil {
-		if s, err := state.Sessions.Resolve(token); err == nil {
-			return s.Username
-		}
+	if id.IsAPIKey {
+		return "apikey:" + id.Username
 	}
-	if state.APIKeys != nil {
-		if k, err := state.APIKeys.Resolve(token); err == nil {
-			return "apikey:" + k.OwnerUsername + ":" + k.Name
-		}
-	}
-	return "anonymous"
+	return id.Username
 }

@@ -241,11 +241,11 @@ func (state *ServerState) handleBackupSchedules(w http.ResponseWriter, r *http.R
 			writeAPIError(w, err.Error(), backupStatusFor(err))
 			return
 		}
-		session, _ := state.Sessions.Resolve(bearerToken(r))
-		if session != nil && session.Role == "user" {
+		identity, _ := state.resolveIdentity(r)
+		if identity != nil && identity.Role == "user" {
 			scoped := make([]backup.Schedule, 0, 1)
 			for _, schedule := range schedules {
-				if schedule.Account == session.Username {
+				if schedule.Account == identity.Username {
 					scoped = append(scoped, schedule)
 				}
 			}

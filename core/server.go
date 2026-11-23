@@ -759,7 +759,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 	})
 
 	mux.HandleFunc("/api/v1/hosting/packages", func(w http.ResponseWriter, r *http.Request) {
-		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		session, sessionErr := state.resolveIdentity(r)
 		if sessionErr != nil {
 			writeAPIError(w, "Session expired", http.StatusUnauthorized)
 			return
@@ -963,7 +963,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 
 	// Panel identities. Secrets and password hashes never leave the process.
 	mux.HandleFunc("/api/v1/users", func(w http.ResponseWriter, r *http.Request) {
-		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		session, sessionErr := state.resolveIdentity(r)
 		if sessionErr != nil {
 			writeAPIError(w, "Session expired", http.StatusUnauthorized)
 			return
@@ -1085,7 +1085,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 
 	// 3. Current User Profile (Protected) resolved from the live session
 	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
-		session, err := state.Sessions.Resolve(bearerToken(r))
+		session, err := state.resolveIdentity(r)
 		if err != nil {
 			writeAPIError(w, "Session expired", http.StatusUnauthorized)
 			return
@@ -1210,7 +1210,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 
 	// 7. Hosting Accounts (Protected - accounts.create / accounts.read)
 	mux.HandleFunc("/api/v1/hosting/accounts", func(w http.ResponseWriter, r *http.Request) {
-		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		session, sessionErr := state.resolveIdentity(r)
 		if sessionErr != nil {
 			writeAPIError(w, "Session expired", http.StatusUnauthorized)
 			return
@@ -1432,7 +1432,7 @@ func NewServerHandler(state *ServerState) http.Handler {
 			writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		session, sessionErr := state.Sessions.Resolve(bearerToken(r))
+		session, sessionErr := state.resolveIdentity(r)
 		if sessionErr != nil {
 			writeAPIError(w, "Session expired", http.StatusUnauthorized)
 			return
