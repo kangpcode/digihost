@@ -29,6 +29,7 @@ import (
 	"digipanel/core/queue"
 	"digipanel/core/rbac"
 	"digipanel/modules/backup"
+	"digipanel/modules/billing"
 	"digipanel/modules/db"
 	"digipanel/modules/dns"
 	"digipanel/modules/firewall"
@@ -146,6 +147,9 @@ type ServerState struct {
 	Agent           *AgentClient
 	DB              *dbstore.Store
 	APIKeys         *APIKeyStore
+	Billing         *billing.Engine
+	Cluster         *ClusterManager
+	Tenants         *TenantManager
 	AdminAllowlist  []string
 	DnsRecords      []DnsRecord
 	LedgerItems     []LedgerEntry
@@ -175,6 +179,11 @@ var safeTerminalBinaries = map[string]bool{
 var publicRoutes = map[string]bool{
 	"GET /api/v1/health":      true,
 	"POST /api/v1/auth/login": true,
+	"GET /api/v1/branding":    true,
+}
+
+func isSignedWebhookRoute(routeKey string) bool {
+	return strings.HasPrefix(routeKey, "POST /api/v1/billing/webhooks/")
 }
 
 var routeRequiredPermissions = map[string]string{
@@ -211,8 +220,41 @@ var routeRequiredPermissions = map[string]string{
 	"GET /api/v1/auth/apikeys":            "users.write",
 	"POST /api/v1/auth/apikeys":           "users.write",
 	"DELETE /api/v1/auth/apikeys":         "users.write",
-	"GET /api/v1/billing/invoices":        "billing.invoices.read",
-	"POST /api/v1/billing/invoices":       "billing.invoices.write", "POST /api/v1/billing/invoices/pay": "billing.invoices.write",
+	"GET /api/v1/billing/invoices":            "billing.invoices.read",
+	"POST /api/v1/billing/invoices":           "billing.invoices.write",
+	"POST /api/v1/billing/invoices/pay":       "billing.invoices.write",
+	"POST /api/v1/billing/invoices/refund":    "billing.invoices.write",
+	"GET /api/v1/billing/invoices/pdf":        "billing.invoices.read",
+	"GET /api/v1/billing/products":            "billing.invoices.read",
+	"POST /api/v1/billing/products":           "billing.invoices.write",
+	"GET /api/v1/billing/clients":             "billing.invoices.read",
+	"POST /api/v1/billing/clients":            "billing.invoices.write",
+	"POST /api/v1/billing/coupons":            "billing.invoices.write",
+	"GET /api/v1/billing/orders":              "billing.invoices.read",
+	"POST /api/v1/billing/orders":             "billing.invoices.write",
+	"GET /api/v1/billing/services":            "billing.invoices.read",
+	"POST /api/v1/billing/services/upgrade":   "billing.invoices.write",
+	"GET /api/v1/billing/domains":             "billing.invoices.read",
+	"POST /api/v1/billing/domains":            "billing.invoices.write",
+	"GET /api/v1/billing/tickets":             "billing.invoices.read",
+	"POST /api/v1/billing/tickets":            "billing.invoices.write",
+	"POST /api/v1/billing/tickets/reply":      "billing.invoices.write",
+	"GET /api/v1/billing/reports":             "billing.ledger.read",
+	"POST /api/v1/billing/automation/run":     "billing.invoices.write",
+	"POST /api/v1/billing/import":             "billing.invoices.write",
+	"GET /api/v1/billing/gdpr/export":         "billing.invoices.read",
+	"POST /api/v1/billing/gdpr/anonymize":     "billing.invoices.write",
+	"POST /api/v1/cluster/nodes/connect":      "system.fleet.write",
+	"GET /api/v1/cluster/node/health":         "system.fleet.read",
+	"POST /api/v1/cluster/dns/sync":           "dns.write",
+	"POST /api/v1/cluster/node/dns-apply":     "dns.write",
+	"POST /api/v1/cluster/migrate":            "system.fleet.write",
+	"POST /api/v1/cluster/node/receive-migration": "system.fleet.write",
+	"GET /api/v1/saas/tenants":                "system.fleet.read",
+	"POST /api/v1/saas/tenants":               "system.fleet.write",
+	"PUT /api/v1/saas/tenants/branding":       "system.fleet.write",
+	"POST /api/v1/saas/tenants/subscription":  "system.fleet.write",
+	"GET /api/v1/saas/tenants/usage":          "system.fleet.read",
 	"GET /api/v1/databases":                   "db.read",
 	"POST /api/v1/databases":                  "db.create",
 	"DELETE /api/v1/databases":                "db.delete",
@@ -588,7 +630,7 @@ func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool,
 		}
 
 		routeKey := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
-		if publicRoutes[routeKey] {
+		if publicRoutes[routeKey] || isSignedWebhookRoute(routeKey) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -946,6 +988,38 @@ func NewServerHandler(state *ServerState) http.Handler {
 	// Scoped API keys management.
 	mux.HandleFunc("/api/v1/auth/apikeys", state.handleAPIKeys)
 
+	// Native Billing Subsystem (Tahap 8)
+	mux.HandleFunc("/api/v1/billing/products", state.handleBillingProducts)
+	mux.HandleFunc("/api/v1/billing/clients", state.handleBillingClients)
+	mux.HandleFunc("/api/v1/billing/coupons", state.handleBillingCoupons)
+	mux.HandleFunc("/api/v1/billing/orders", state.handleBillingOrders)
+	mux.HandleFunc("/api/v1/billing/services", state.handleBillingServices)
+	mux.HandleFunc("/api/v1/billing/services/upgrade", state.handleBillingServiceUpgrade)
+	mux.HandleFunc("/api/v1/billing/invoices/refund", state.handleBillingRefund)
+	mux.HandleFunc("/api/v1/billing/invoices/pdf", state.handleBillingInvoicePDF)
+	mux.HandleFunc("/api/v1/billing/webhooks/", state.handleBillingWebhook)
+	mux.HandleFunc("/api/v1/billing/domains", state.handleBillingDomains)
+	mux.HandleFunc("/api/v1/billing/tickets", state.handleBillingTickets)
+	mux.HandleFunc("/api/v1/billing/tickets/reply", state.handleBillingTicketReply)
+	mux.HandleFunc("/api/v1/billing/reports", state.handleBillingReports)
+	mux.HandleFunc("/api/v1/billing/automation/run", state.handleBillingAutomationRun)
+	mux.HandleFunc("/api/v1/billing/import", state.handleBillingImport)
+	mux.HandleFunc("/api/v1/billing/gdpr/export", state.handleBillingGDPRExport)
+	mux.HandleFunc("/api/v1/billing/gdpr/anonymize", state.handleBillingGDPRAnonymize)
+
+	// Cluster Hub/Node mTLS & Multi-Tenant SaaS (Tahap 9)
+	mux.HandleFunc("/api/v1/branding", state.handlePublicBranding)
+	mux.HandleFunc("/api/v1/cluster/nodes/connect", state.handleClusterConnectNode)
+	mux.HandleFunc("/api/v1/cluster/node/health", state.handleClusterNodeHealth)
+	mux.HandleFunc("/api/v1/cluster/dns/sync", state.handleClusterDNSSync)
+	mux.HandleFunc("/api/v1/cluster/node/dns-apply", state.handleClusterDNSApply)
+	mux.HandleFunc("/api/v1/cluster/migrate", state.handleClusterMigrateAccount)
+	mux.HandleFunc("/api/v1/cluster/node/receive-migration", state.handleClusterReceiveMigration)
+	mux.HandleFunc("/api/v1/saas/tenants", state.handleSaaSTenants)
+	mux.HandleFunc("/api/v1/saas/tenants/branding", state.handleSaaSTenantBranding)
+	mux.HandleFunc("/api/v1/saas/tenants/subscription", state.handleSaaSTenantSubscription)
+	mux.HandleFunc("/api/v1/saas/tenants/usage", state.handleSaaSTenantUsage)
+
 	// Native invoice ledger.
 	mux.HandleFunc("/api/v1/billing/invoices", state.handleInvoices)
 	mux.HandleFunc("/api/v1/billing/invoices/pay", state.handleInvoicePayment)
@@ -1114,8 +1188,20 @@ func NewServerHandler(state *ServerState) http.Handler {
 	// real hostname and the host's routable address.
 	mux.HandleFunc("/api/v1/cluster/fleet", func(w http.ResponseWriter, r *http.Request) {
 		state.mu.RLock()
-		nodes := state.ClusterNodes
+		nodes := append([]ClusterNode(nil), state.ClusterNodes...)
 		state.mu.RUnlock()
+
+		for _, mn := range state.clusterManager().ListNodes() {
+			nodes = append(nodes, ClusterNode{
+				ID:           mn.ID,
+				Name:         mn.Name,
+				Hostname:     mn.Hostname,
+				IPAddress:    mn.IPAddress,
+				Role:         mn.Role,
+				Status:       mn.Status,
+				PanelVersion: mn.PanelVersion,
+			})
+		}
 
 		if len(nodes) == 0 {
 			hostname, err := os.Hostname()

@@ -27,9 +27,18 @@ const todayIso = (): string => new Date().toISOString().slice(0, 10);
 export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }) => {
   const t = (key: any) => getTranslation(language, key);
 
-  const [activeTab, setActiveTab] = useState<'invoices' | 'ledger'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'ledger' | 'catalog' | 'clients' | 'tickets' | 'reports'>('invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [ledger, setLedger] = useState<LedgerResponse | null>(null);
+  const [products, setProducts] = useState<Array<{ id: string; slug: string; name: string; productType: string; packageName: string; currency: string; monthlyCents: number }>>([]);
+  const [clients, setClients] = useState<Array<{ id: string; fullName: string; email: string; country: string; currency: string; riskScore: number }>>([]);
+  const [orders, setOrders] = useState<Array<{ id: string; orderNumber: string; clientId: string; productId: string; domain: string; totalCents: number; currency: string; status: string }>>([]);
+  const [tickets, setTickets] = useState<Array<{ id: string; ticketNumber: string; department: string; subject: string; priority: string; status: string }>>([]);
+  const [report, setReport] = useState<{ currency: string; mrrCents: number; arrCents: number; collectedCents: number; taxCollectedCents: number; activeServices: number; suspendedServices: number } | null>(null);
+  const [prodForm, setProdForm] = useState({ slug: '', name: '', packageName: 'starter', monthly: '150000' });
+  const [cliForm, setCliForm] = useState({ fullName: '', email: '', country: 'ID' });
+  const [ordForm, setOrdForm] = useState({ clientId: '', productId: '', domain: '', username: '' });
+  const [tktForm, setTktForm] = useState({ clientId: '', subject: '', priority: 'medium', message: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [ledgerError, setLedgerError] = useState('');
@@ -50,9 +59,14 @@ export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }
     setLoading(true);
     setError('');
     setLedgerError('');
-    const [invoiceResult, ledgerResult] = await Promise.allSettled([
+    const [invoiceResult, ledgerResult, prodRes, cliRes, ordRes, tktRes, repRes] = await Promise.allSettled([
       apiFetch<Invoice[]>('/api/v1/billing/invoices'),
-      apiFetch<LedgerResponse>('/api/v1/billing/ledger')
+      apiFetch<LedgerResponse>('/api/v1/billing/ledger'),
+      apiFetch<typeof products>('/api/v1/billing/products'),
+      apiFetch<typeof clients>('/api/v1/billing/clients'),
+      apiFetch<typeof orders>('/api/v1/billing/orders'),
+      apiFetch<typeof tickets>('/api/v1/billing/tickets'),
+      apiFetch<typeof report>('/api/v1/billing/reports')
     ]);
 
     if (invoiceResult.status === 'fulfilled') {
@@ -67,6 +81,11 @@ export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }
       setLedger(null);
       setLedgerError(ledgerResult.reason instanceof Error ? ledgerResult.reason.message : String(ledgerResult.reason));
     }
+    if (prodRes.status === 'fulfilled' && Array.isArray(prodRes.value)) setProducts(prodRes.value);
+    if (cliRes.status === 'fulfilled' && Array.isArray(cliRes.value)) setClients(cliRes.value);
+    if (ordRes.status === 'fulfilled' && Array.isArray(ordRes.value)) setOrders(ordRes.value);
+    if (tktRes.status === 'fulfilled' && Array.isArray(tktRes.value)) setTickets(tktRes.value);
+    if (repRes.status === 'fulfilled' && repRes.value) setReport(repRes.value);
     setLoading(false);
   };
 
@@ -267,7 +286,7 @@ export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }
         </form>
       ) : null}
 
-      <div style={{ display: 'flex', gap: '6px' }}>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         <button type="button" className={activeTab === 'invoices' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('invoices')}>
           <FileText size={13} />
           {t('billingTabInvoices')}
@@ -276,9 +295,190 @@ export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }
           <BookOpen size={13} />
           {t('billingTabLedger')}
         </button>
+        <button type="button" className={activeTab === 'catalog' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('catalog')}>
+          {t('billingTabCatalog')}
+        </button>
+        <button type="button" className={activeTab === 'clients' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('clients')}>
+          {t('billingTabClients')}
+        </button>
+        <button type="button" className={activeTab === 'tickets' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('tickets')}>
+          {t('billingTabTickets')}
+        </button>
+        <button type="button" className={activeTab === 'reports' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} onClick={() => setActiveTab('reports')}>
+          {t('billingTabReports')}
+        </button>
       </div>
 
-      {loading ? (
+      {activeTab === 'catalog' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form
+            className="glass-panel"
+            style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'end' }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void apiFetch('/api/v1/billing/products', {
+                method: 'POST',
+                body: JSON.stringify({
+                  slug: prodForm.slug,
+                  name: prodForm.name,
+                  productType: 'hosting',
+                  packageName: prodForm.packageName,
+                  currency: defaultCurrency,
+                  monthlyCents: Number(prodForm.monthly) || 100000,
+                  autoProvision: true
+                })
+              }).then(() => { setProdForm({ slug: '', name: '', packageName: 'starter', monthly: '150000' }); return load(); }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+          >
+            <input className="input-glass" required placeholder="slug (e.g. cloud-pro)" value={prodForm.slug} onChange={(e) => setProdForm((p) => ({ ...p, slug: e.target.value }))} />
+            <input className="input-glass" required placeholder="Product name" value={prodForm.name} onChange={(e) => setProdForm((p) => ({ ...p, name: e.target.value }))} />
+            <input className="input-glass" placeholder="Package (starter/pro)" value={prodForm.packageName} onChange={(e) => setProdForm((p) => ({ ...p, packageName: e.target.value }))} />
+            <input className="input-glass" type="number" min="1" placeholder="Monthly minor units" value={prodForm.monthly} onChange={(e) => setProdForm((p) => ({ ...p, monthly: e.target.value }))} />
+            <button type="submit" className="btn btn-primary btn-sm">{t('billingAddProduct')}</button>
+          </form>
+
+          <form
+            className="glass-panel"
+            style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'end' }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void apiFetch('/api/v1/billing/orders', {
+                method: 'POST',
+                body: JSON.stringify({ clientId: ordForm.clientId, productId: ordForm.productId, billingCycle: 'monthly', domain: ordForm.domain, username: ordForm.username })
+              }).then(() => { setOrdForm({ clientId: '', productId: '', domain: '', username: '' }); return load(); }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+          >
+            <select className="input-glass" required value={ordForm.clientId} onChange={(e) => setOrdForm((o) => ({ ...o, clientId: e.target.value }))}>
+              <option value="">Client...</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+            </select>
+            <select className="input-glass" required value={ordForm.productId} onChange={(e) => setOrdForm((o) => ({ ...o, productId: e.target.value }))}>
+              <option value="">Product...</option>
+              {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <input className="input-glass" required placeholder="Domain" value={ordForm.domain} onChange={(e) => setOrdForm((o) => ({ ...o, domain: e.target.value }))} />
+            <input className="input-glass" required placeholder="Username" value={ordForm.username} onChange={(e) => setOrdForm((o) => ({ ...o, username: e.target.value }))} />
+            <button type="submit" className="btn btn-primary btn-sm">{t('billingPlaceOrder')}</button>
+          </form>
+
+          <div className="glass-panel" style={{ overflowX: 'auto' }}>
+            <table className="glass-table">
+              <thead><tr><th>Order</th><th>Domain</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id}>
+                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>{o.orderNumber}</td>
+                    <td>{o.domain || '-'}</td>
+                    <td className="font-mono">{formatMoney(o.totalCents, o.currency)}</td>
+                    <td><StatusPill status={o.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : activeTab === 'clients' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form
+            className="glass-panel"
+            style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'end' }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void apiFetch('/api/v1/billing/clients', {
+                method: 'POST',
+                body: JSON.stringify({ fullName: cliForm.fullName, email: cliForm.email, country: cliForm.country, currency: defaultCurrency })
+              }).then(() => { setCliForm({ fullName: '', email: '', country: 'ID' }); return load(); }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+          >
+            <input className="input-glass" required placeholder={t('billingClientName')} value={cliForm.fullName} onChange={(e) => setCliForm((c) => ({ ...c, fullName: e.target.value }))} />
+            <input className="input-glass" required type="email" placeholder={t('billingClientEmail')} value={cliForm.email} onChange={(e) => setCliForm((c) => ({ ...c, email: e.target.value }))} />
+            <input className="input-glass" maxLength={2} placeholder="Country (ID)" value={cliForm.country} onChange={(e) => setCliForm((c) => ({ ...c, country: e.target.value }))} />
+            <button type="submit" className="btn btn-primary btn-sm">{t('billingAddClient')}</button>
+          </form>
+          <div className="glass-panel" style={{ overflowX: 'auto' }}>
+            <table className="glass-table">
+              <thead><tr><th>Name</th><th>Email</th><th>Country</th><th>Risk</th></tr></thead>
+              <tbody>
+                {clients.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.fullName}</td>
+                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>{c.email}</td>
+                    <td>{c.country}</td>
+                    <td className="font-mono">{c.riskScore}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : activeTab === 'tickets' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form
+            className="glass-panel"
+            style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'end' }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void apiFetch('/api/v1/billing/tickets', {
+                method: 'POST',
+                body: JSON.stringify({ clientId: tktForm.clientId, department: 'support', subject: tktForm.subject, priority: tktForm.priority, message: tktForm.message })
+              }).then(() => { setTktForm({ clientId: '', subject: '', priority: 'medium', message: '' }); return load(); }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+          >
+            <select className="input-glass" required value={tktForm.clientId} onChange={(e) => setTktForm((tk) => ({ ...tk, clientId: e.target.value }))}>
+              <option value="">Client...</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+            </select>
+            <input className="input-glass" required placeholder="Subject" value={tktForm.subject} onChange={(e) => setTktForm((tk) => ({ ...tk, subject: e.target.value }))} />
+            <select className="input-glass" value={tktForm.priority} onChange={(e) => setTktForm((tk) => ({ ...tk, priority: e.target.value }))}>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="urgent">urgent</option>
+            </select>
+            <input className="input-glass" required placeholder="Message" value={tktForm.message} onChange={(e) => setTktForm((tk) => ({ ...tk, message: e.target.value }))} />
+            <button type="submit" className="btn btn-primary btn-sm">{t('billingOpenTicket')}</button>
+          </form>
+          <div className="glass-panel" style={{ overflowX: 'auto' }}>
+            <table className="glass-table">
+              <thead><tr><th>Ticket</th><th>Department</th><th>Subject</th><th>Priority</th><th>Status</th></tr></thead>
+              <tbody>
+                {tickets.map((tk) => (
+                  <tr key={tk.id}>
+                    <td className="font-mono">{tk.ticketNumber}</td>
+                    <td>{tk.department}</td>
+                    <td>{tk.subject}</td>
+                    <td>{tk.priority}</td>
+                    <td><StatusPill status={tk.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : activeTab === 'reports' ? (
+        <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700 }}>{t('billingTabReports')}</div>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => void apiFetch('/api/v1/billing/automation/run', { method: 'POST' }).then(() => { setNotice('Billing automation cycle completed.'); return load(); })}
+            >
+              {t('billingRunAutomation')}
+            </button>
+          </div>
+          {report ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+              <div className="glass-card" style={{ padding: '12px' }}><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('billingMrr')}</div><div className="font-mono" style={{ fontWeight: 800 }}>{formatMoney(report.mrrCents, report.currency)}</div></div>
+              <div className="glass-card" style={{ padding: '12px' }}><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('billingArr')}</div><div className="font-mono" style={{ fontWeight: 800 }}>{formatMoney(report.arrCents, report.currency)}</div></div>
+              <div className="glass-card" style={{ padding: '12px' }}><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('billingCollected')}</div><div className="font-mono" style={{ fontWeight: 800 }}>{formatMoney(report.collectedCents, report.currency)}</div></div>
+              <div className="glass-card" style={{ padding: '12px' }}><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Active / Suspended</div><div className="font-mono" style={{ fontWeight: 800 }}>{report.activeServices} / {report.suspendedServices}</div></div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {(activeTab === 'invoices' || activeTab === 'ledger') && (loading ? (
         <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>{t('appsLoading')}</div>
       ) : activeTab === 'invoices' ? (
         invoices.length === 0 ? (
@@ -359,7 +559,7 @@ export const BillingLedgerView: React.FC<{ language: Language }> = ({ language }
             {t('billingThDebit')} {formatMoney(ledger.totalDebits, ledger.currency)} &middot; {t('billingThCredit')} {formatMoney(ledger.totalCredits, ledger.currency)}
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 };

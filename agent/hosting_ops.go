@@ -268,12 +268,12 @@ func handleCgroupsLimit(params map[string]string) AgentResponse {
 		return AgentResponse{Success: false, Error: fmt.Sprintf("create cgroup slice: %v", err)}
 	}
 	if memoryBytes > 0 {
-		if err := os.WriteFile(filepath.Join(sliceDir, "memory.max"), []byte(fmt.Sprintf("%d\n", memoryBytes)), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(sliceDir, "memory.max"), fmt.Appendf(nil, "%d\n", memoryBytes), 0644); err != nil {
 			return AgentResponse{Success: false, Error: fmt.Sprintf("write memory.max: %v", err)}
 		}
 	}
 	if pidsMax > 0 {
-		if err := os.WriteFile(filepath.Join(sliceDir, "pids.max"), []byte(fmt.Sprintf("%d\n", pidsMax)), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(sliceDir, "pids.max"), fmt.Appendf(nil, "%d\n", pidsMax), 0644); err != nil {
 			return AgentResponse{Success: false, Error: fmt.Sprintf("write pids.max: %v", err)}
 		}
 	}

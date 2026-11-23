@@ -506,6 +506,168 @@ paths:
         '401':
           description: Unauthorized
 
+  /auth/apikeys:
+    get:
+      summary: List scoped API keys
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: API keys list } }
+    post:
+      summary: Create a scoped API key
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Created API key and one-time secret } }
+    delete:
+      summary: Revoke a scoped API key by id
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Revoked } }
+
+  /files/write:
+    post:
+      summary: Write file content inside an account home directory
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: File written } }
+  /files/mkdir:
+    post:
+      summary: Create directory inside an account home directory
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Directory created } }
+  /files/rename:
+    post:
+      summary: Rename or move a file inside an account home directory
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: File renamed } }
+  /files:
+    delete:
+      summary: Delete a file or directory inside an account home directory
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Entry deleted } }
+
+  /billing/products:
+    get:
+      summary: List billing catalog products
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Products list } }
+    post:
+      summary: Create a billing catalog product
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Created product } }
+  /billing/clients:
+    get:
+      summary: List billing clients
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Clients list } }
+    post:
+      summary: Register a billing client
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Created client } }
+  /billing/orders:
+    get:
+      summary: List orders
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Orders list } }
+    post:
+      summary: Place a new order with tax, coupon, and fraud scoring
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Order, invoice, and pending service } }
+  /billing/services/upgrade:
+    post:
+      summary: Upgrade or downgrade a service with integer prorata calculation
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Prorata charge and invoice } }
+  /billing/invoices/refund:
+    post:
+      summary: Issue an invoice refund with balanced contra ledger entries
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Updated invoice } }
+  /billing/invoices/pdf:
+    get:
+      summary: Download invoice PDF
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: PDF document } }
+  /billing/webhooks/{gateway}:
+    post:
+      summary: Signed, idempotent payment gateway webhook receiver
+      responses:
+        '200': { description: Webhook verified and processed }
+        '401': { description: Invalid cryptographic signature }
+  /billing/domains:
+    get:
+      summary: Check domain availability or list registered domains
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Domain list or availability } }
+    post:
+      summary: Register a domain via registrar plugin
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Domain registered } }
+  /billing/tickets:
+    get:
+      summary: List support tickets
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Tickets list } }
+    post:
+      summary: Open a support ticket with SLA tracking
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Ticket created } }
+  /billing/reports:
+    get:
+      summary: Financial MRR, ARR, churn, LTV, and tax report
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Report summary } }
+  /billing/automation/run:
+    post:
+      summary: Run idempotent billing automation cycle
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Automation summary } }
+  /billing/import:
+    post:
+      summary: Import WHMCS or Blesta migration bundle
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Migration import summary } }
+
+  /cluster/nodes/connect:
+    post:
+      summary: Connect a remote cluster node with pinned mTLS certificate verification
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Connected node } }
+  /cluster/dns/sync:
+    post:
+      summary: Synchronize DNS zones across all connected mTLS nodes
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Sync summary } }
+  /cluster/migrate:
+    post:
+      summary: Migrate a hosting account over mTLS with SHA-256 checksum verification
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Migration summary } }
+
+  /branding:
+    get:
+      summary: Resolve public white-label branding by Host header or tenant slug
+      responses: { '200': { description: Tenant white-label branding } }
+  /saas/tenants:
+    get:
+      summary: List multi-tenant SaaS operators
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Tenants list } }
+    post:
+      summary: Provision a SaaS operator tenant with subscription and branding
+      security: [{ BearerAuth: [] }]
+      responses: { '201': { description: Tenant created } }
+  /saas/tenants/branding:
+    put:
+      summary: Update white-label branding for a tenant
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Updated tenant } }
+  /saas/tenants/subscription:
+    post:
+      summary: Update SaaS subscription plan or status
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Updated tenant } }
+  /saas/tenants/usage:
+    get:
+      summary: Inspect tenant quota and account usage
+      security: [{ BearerAuth: [] }]
+      responses: { '200': { description: Tenant usage report } }
+
 components:
   securitySchemes:
     BearerAuth:
