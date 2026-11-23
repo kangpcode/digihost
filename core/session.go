@@ -363,6 +363,9 @@ func (state *ServerState) ensureRuntime() {
 	if state.Sessions == nil {
 		state.Sessions = NewSessionStore()
 	}
+	if state.APIKeys == nil {
+		state.APIKeys = NewAPIKeyStore(state.DB)
+	}
 	if state.LoginThrottle == nil {
 		state.LoginThrottle = NewLoginThrottle()
 	}

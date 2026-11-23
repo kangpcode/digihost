@@ -25,6 +25,7 @@ import (
 
 	"digipanel/core/audit"
 	"digipanel/core/auth"
+	"digipanel/core/dbstore"
 	"digipanel/core/queue"
 	"digipanel/core/rbac"
 	"digipanel/modules/backup"
@@ -143,6 +144,9 @@ type ServerState struct {
 	Backups         *backup.Engine
 	Firewall        *firewall.Manager
 	Agent           *AgentClient
+	DB              *dbstore.Store
+	APIKeys         *APIKeyStore
+	AdminAllowlist  []string
 	DnsRecords      []DnsRecord
 	LedgerItems     []LedgerEntry
 	ClusterNodes    []ClusterNode
@@ -200,6 +204,13 @@ var routeRequiredPermissions = map[string]string{
 	"GET /api/v1/hosting/accounts/logs":   "accounts.read",
 	"GET /api/v1/files/list":              "files.read",
 	"GET /api/v1/files/content":           "files.read",
+	"POST /api/v1/files/write":            "files.write",
+	"POST /api/v1/files/mkdir":            "files.write",
+	"POST /api/v1/files/rename":           "files.write",
+	"DELETE /api/v1/files":                "files.write",
+	"GET /api/v1/auth/apikeys":            "users.write",
+	"POST /api/v1/auth/apikeys":           "users.write",
+	"DELETE /api/v1/auth/apikeys":         "users.write",
 	"GET /api/v1/billing/invoices":        "billing.invoices.read",
 	"POST /api/v1/billing/invoices":       "billing.invoices.write", "POST /api/v1/billing/invoices/pay": "billing.invoices.write",
 	"GET /api/v1/databases":                   "db.read",
@@ -288,11 +299,34 @@ func initStorage(state *ServerState) {
 	if state.Sessions == nil {
 		state.Sessions = NewSessionStore()
 	}
+	if state.APIKeys == nil {
+		state.APIKeys = NewAPIKeyStore(state.DB)
+	}
 	if state.LoginThrottle == nil {
 		state.LoginThrottle = NewLoginThrottle()
 	}
 	if len(state.TrustedProxies) == 0 {
 		state.TrustedProxies = parseTrustedProxies(os.Getenv("DIGIPANEL_TRUSTED_PROXIES"))
+	}
+	if len(state.AdminAllowlist) == 0 {
+		state.AdminAllowlist = parseTrustedProxies(os.Getenv("DIGIPANEL_ADMIN_ALLOWLIST"))
+	}
+	if state.DB == nil {
+		dsn := strings.TrimSpace(os.Getenv("DIGIPANEL_DATABASE_URL"))
+		if dsn == "" {
+			dsn = strings.TrimSpace(os.Getenv("DIGIPANEL_DB_URL"))
+		}
+		if dsn != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			store, err := dbstore.Open(ctx, dsn)
+			cancel()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "DigiPanel: PostgreSQL initialization failed: %v\n", err)
+			} else {
+				state.DB = store
+				state.APIKeys = NewAPIKeyStore(store)
+			}
+		}
 	}
 
 	state.AuditLogger = audit.NewLogger()
@@ -569,24 +603,51 @@ func WithDefaultDenyAuthAndRbac(next http.Handler, publicRoutes map[string]bool,
 			return
 		}
 
-		session, sessionErr := state.Sessions.Resolve(token)
-		if sessionErr != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": "Invalid or expired authorization token.",
-			})
+		var actorRole rbac.Role
+		var apiKey *ScopedAPIKey
+		if strings.HasPrefix(token, "dpkey_") {
+			if state.APIKeys == nil {
+				writeAPIError(w, "Invalid or expired authorization token.", http.StatusUnauthorized)
+				return
+			}
+			resolvedKey, err := state.APIKeys.Resolve(token)
+			if err != nil {
+				writeAPIError(w, "Invalid or expired authorization token.", http.StatusUnauthorized)
+				return
+			}
+			actorRole = resolvedKey.Role
+			apiKey = resolvedKey
+		} else {
+			session, sessionErr := state.Sessions.Resolve(token)
+			if sessionErr != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"error": "Invalid or expired authorization token.",
+				})
+				return
+			}
+			actorRole = session.Role
+		}
+
+		// Enforce optional admin IP allowlist
+		if (actorRole == rbac.RoleAdmin || actorRole == rbac.RoleStaff) && !isAdminIPAllowed(clientIP(r, state.TrustedProxies), state.AdminAllowlist) {
+			writeAPIError(w, "Administrator access denied from this IP address.", http.StatusForbidden)
 			return
 		}
 
-		// Enforce fine-grained RBAC
+		// Enforce fine-grained RBAC and API key permission scope
 		if requiredPerm, exists := routeRequiredPermissions[routeKey]; exists {
-			if err := rbac.ValidateAccess(session.Role, requiredPerm); err != nil {
+			if err := rbac.ValidateAccess(actorRole, requiredPerm); err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
 				_ = json.NewEncoder(w).Encode(map[string]string{
 					"error": fmt.Sprintf("Permission denied. Required capability: %s", requiredPerm),
 				})
+				return
+			}
+			if apiKey != nil && !apiKey.Allows(requiredPerm) {
+				writeAPIError(w, fmt.Sprintf("API key lacks scope: %s", requiredPerm), http.StatusForbidden)
 				return
 			}
 		}
@@ -874,9 +935,16 @@ func NewServerHandler(state *ServerState) http.Handler {
 		})
 	})
 
-	// File manager browsing scoped to the owning hosting account.
+	// File manager browsing and write operations scoped to the owning hosting account.
 	mux.HandleFunc("/api/v1/files/list", state.handleFileList)
 	mux.HandleFunc("/api/v1/files/content", state.handleFileContent)
+	mux.HandleFunc("/api/v1/files/write", state.handleFileWrite)
+	mux.HandleFunc("/api/v1/files/mkdir", state.handleFileMkdir)
+	mux.HandleFunc("/api/v1/files/rename", state.handleFileRename)
+	mux.HandleFunc("/api/v1/files", state.handleFileDelete)
+
+	// Scoped API keys management.
+	mux.HandleFunc("/api/v1/auth/apikeys", state.handleAPIKeys)
 
 	// Native invoice ledger.
 	mux.HandleFunc("/api/v1/billing/invoices", state.handleInvoices)
@@ -1193,6 +1261,31 @@ func NewServerHandler(state *ServerState) http.Handler {
 				return
 			}
 
+			if state.Agent != nil && state.Agent.Available() {
+				agentCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+				_, posixErr := state.Agent.Call(agentCtx, "user.create_posix", map[string]string{
+					"username": acc.Username,
+					"uid":      strconv.Itoa(acc.PosixUID),
+				})
+				if posixErr != nil {
+					cancel()
+					_ = state.HostingManager.TerminateAccount(acc.Username)
+					writeAPIError(w, "Agent POSIX provisioning failed: "+posixErr.Error(), http.StatusBadGateway)
+					return
+				}
+				_, vhostErr := state.Agent.Call(agentCtx, "account.create_vhost", map[string]string{
+					"username":    acc.Username,
+					"domain":      acc.PrimaryDomain,
+					"php_version": acc.PhpVersion,
+				})
+				cancel()
+				if vhostErr != nil {
+					_ = state.HostingManager.TerminateAccount(acc.Username)
+					writeAPIError(w, "Agent vhost provisioning failed: "+vhostErr.Error(), http.StatusBadGateway)
+					return
+				}
+			}
+
 			clientAddress := clientIP(r, state.TrustedProxies)
 			createdLogin := false
 			initialPassword := ""
@@ -1252,7 +1345,18 @@ func NewServerHandler(state *ServerState) http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		state.AuditLogger.Append("admin", "account.suspend", "account", req.Username, `{"status":"suspended"}`, r.RemoteAddr)
+		if state.Agent != nil && state.Agent.Available() {
+			acc, _ := state.HostingManager.GetAccount(req.Username)
+			domain := ""
+			if acc != nil {
+				domain = acc.PrimaryDomain
+			}
+			_, _ = state.Agent.Call(r.Context(), "account.suspend", map[string]string{
+				"username": req.Username,
+				"domain":   domain,
+			})
+		}
+		state.AuditLogger.Append(state.actorUsername(r), "account.suspend", "account", req.Username, `{"status":"suspended"}`, clientIP(r, state.TrustedProxies))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"suspended": true})
 	})
