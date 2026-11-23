@@ -128,6 +128,10 @@ func TestAgentDomainValidation(t *testing.T) {
 
 func TestAgentValidActions(t *testing.T) {
 	tmp := t.TempDir()
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("mkdir binDir: %v", err)
+	}
 	logPath := filepath.Join(tmp, "exec.log")
 	nginxDir := filepath.Join(tmp, "nginx")
 	phpDir := filepath.Join(tmp, "php")
@@ -138,11 +142,11 @@ func TestAgentValidActions(t *testing.T) {
 	t.Setenv("DIGIPANEL_PHP_POOL_DIR", phpDir)
 	t.Setenv("DIGIPANEL_CGROUPS_ROOT", cgroupsDir)
 	t.Setenv("DIGIPANEL_HOME_BASE", homeBase)
-	t.Setenv("DIGIPANEL_NGINX_BINARY", writeAgentProbeScript(t, tmp, "nginx", logPath))
-	t.Setenv("DIGIPANEL_SYSTEMCTL_BINARY", writeAgentProbeScript(t, tmp, "systemctl", logPath))
-	t.Setenv("DIGIPANEL_USERADD_BINARY", writeAgentProbeScript(t, tmp, "useradd", logPath))
-	t.Setenv("DIGIPANEL_USERDEL_BINARY", writeAgentProbeScript(t, tmp, "userdel", logPath))
-	t.Setenv("DIGIPANEL_CERTBOT_BINARY", writeAgentProbeScript(t, tmp, "certbot", logPath))
+	t.Setenv("DIGIPANEL_NGINX_BINARY", writeAgentProbeScript(t, binDir, "nginx", logPath))
+	t.Setenv("DIGIPANEL_SYSTEMCTL_BINARY", writeAgentProbeScript(t, binDir, "systemctl", logPath))
+	t.Setenv("DIGIPANEL_USERADD_BINARY", writeAgentProbeScript(t, binDir, "useradd", logPath))
+	t.Setenv("DIGIPANEL_USERDEL_BINARY", writeAgentProbeScript(t, binDir, "userdel", logPath))
+	t.Setenv("DIGIPANEL_CERTBOT_BINARY", writeAgentProbeScript(t, binDir, "certbot", logPath))
 
 	validReqs := []AgentRequest{
 		{
