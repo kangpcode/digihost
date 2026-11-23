@@ -103,80 +103,42 @@ func executeSafeCommand(ctx context.Context, binary string, args []string) (stri
 }
 
 func handleAgentRequest(req AgentRequest) AgentResponse {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_ = ctx
 
 	switch req.Action {
 	case "ping":
 		return AgentResponse{Success: true, Output: "pong"}
 
 	case "system.status":
-		return AgentResponse{Success: true, Output: "systemd, nftables, and services operating nominally"}
+		if _, err := os.Stat("/proc/uptime"); err != nil {
+			return AgentResponse{Success: false, Error: fmt.Sprintf("kernel procfs unavailable: %v", err)}
+		}
+		return AgentResponse{Success: true, Output: "systemd, procfs, and agent dispatcher operational"}
 
 	case "account.create_vhost":
-		username := req.Params["username"]
-		domain := req.Params["domain"]
-		if err := validateInputParam("username", username); err != nil {
-			return AgentResponse{Success: false, Error: err.Error()}
-		}
-		if err := validateDomain(domain); err != nil {
-			return AgentResponse{Success: false, Error: err.Error()}
-		}
-		return AgentResponse{
-			Success: true,
-			Output:  fmt.Sprintf("vhost successfully provisioned for %s on domain %s", username, domain),
-		}
+		return handleCreateVhost(ctx, req.Params)
+
+	case "account.remove_vhost":
+		return handleRemoveVhost(ctx, req.Params)
 
 	case "account.suspend":
-		username := req.Params["username"]
-		if err := validateInputParam("username", username); err != nil {
-			return AgentResponse{Success: false, Error: err.Error()}
-		}
-		return AgentResponse{
-			Success: true,
-			Output:  fmt.Sprintf("account %s suspended and cgroups paused", username),
-		}
+		return handleAccountSuspendState(req.Params, true)
+
+	case "account.unsuspend":
+		return handleAccountSuspendState(req.Params, false)
 
 	case "ssl.renew":
-		domain := req.Params["domain"]
-		if err := validateDomain(domain); err != nil {
-			return AgentResponse{Success: false, Error: err.Error()}
-		}
-		return AgentResponse{
-			Success: true,
-			Output:  fmt.Sprintf("ACME HTTP-01 challenge verified for domain %s", domain),
-		}
+		return handleSSLRenew(ctx, req.Params)
 
 	case "service.action":
-		service := req.Params["service"]
-		action := req.Params["action"]
-		if !allowedServices[service] {
-			return AgentResponse{Success: false, Error: fmt.Sprintf("service '%s' is not in allowed service whitelist", service)}
-		}
-		if !allowedServiceActions[action] {
-			return AgentResponse{Success: false, Error: fmt.Sprintf("action '%s' is not in allowed service actions", action)}
-		}
-		return AgentResponse{
-			Success: true,
-			Output:  fmt.Sprintf("service %s %s completed successfully", service, action),
-		}
+		return handleServiceAction(ctx, req.Params)
 
 	case "user.create_posix":
-		username := req.Params["username"]
-		uidStr := req.Params["uid"]
-		if err := validateInputParam("username", username); err != nil {
-			return AgentResponse{Success: false, Error: err.Error()}
-		}
-		if uidStr != "" {
-			if _, err := strconv.Atoi(uidStr); err != nil {
-				return AgentResponse{Success: false, Error: "invalid UID"}
-			}
-		}
-		return AgentResponse{
-			Success: true,
-			Output:  fmt.Sprintf("POSIX user %s configured with dedicated home and namespace jail", username),
-		}
+		return handleCreatePosixUser(ctx, req.Params)
+
+	case "user.delete_posix":
+		return handleDeletePosixUser(ctx, req.Params)
 
 	case "db.list", "db.create", "db.drop", "db.user.create", "db.user.drop", "db.user.password", "db.user.grant":
 		return handleDBCommand(req.Action, req.Params)
@@ -188,26 +150,7 @@ func handleAgentRequest(req AgentRequest) AgentResponse {
 		return handleFirewallCommand(req.Action, req.Params)
 
 	case "cgroups.limit":
-		username := req.Params["username"]
-		memoryMbStr := req.Params["memory_mb"]
-		pidsLimitStr := req.Params["pids_max"]
-		if err := validateInputParam("username", username); err != nil {
-			return AgentResponse{Success: false, Error: err.Error()}
-		}
-		if memoryMbStr != "" {
-			if _, err := strconv.Atoi(memoryMbStr); err != nil {
-				return AgentResponse{Success: false, Error: "invalid memory_mb limit"}
-			}
-		}
-		if pidsLimitStr != "" {
-			if _, err := strconv.Atoi(pidsLimitStr); err != nil {
-				return AgentResponse{Success: false, Error: "invalid pids_max limit"}
-			}
-		}
-		return AgentResponse{
-			Success: true,
-			Output:  fmt.Sprintf("cgroups v2 limits applied for %s: memory=%sMB, pids=%s", username, memoryMbStr, pidsLimitStr),
-		}
+		return handleCgroupsLimit(req.Params)
 
 	default:
 		return AgentResponse{
