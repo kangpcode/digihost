@@ -66,7 +66,8 @@ func (f *fakeDBExecutor) Run(ctx context.Context, args []string, stdin string) (
 	if strings.Contains(stdin, "information_schema.SCHEMATA") {
 		var builder strings.Builder
 		for _, name := range f.databases {
-			builder.WriteString(name + "\tutf8mb4\tutf8mb4_unicode_ci\t1\t1024\n")
+			builder.WriteString(name)
+			builder.WriteString("\tutf8mb4\tutf8mb4_unicode_ci\t1\t1024\n")
 		}
 		return builder.String(), nil
 	}
