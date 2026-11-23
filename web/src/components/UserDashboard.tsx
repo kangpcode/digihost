@@ -209,18 +209,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 border: '1px solid var(--glass-border)'
               }}
             >
-              <div style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '9px',
-                background: 'rgba(234, 88, 12, 0.12)',
-                color: 'var(--brand-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
+              <div className="clay-icon" style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.16), rgba(245, 158, 11, 0.22))',
+                color: 'var(--brand-primary)'
               }}>
-                <tool.icon size={17} />
+                <tool.icon size={18} />
               </div>
               <span style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-main)' }}>{tool.title}</span>
             </button>

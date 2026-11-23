@@ -79,18 +79,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-            {/* Zap Icon in squircle */}
-            <div style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(245, 158, 11, 0.2) 100%)',
-              border: '1px solid rgba(234, 88, 12, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--brand-primary)',
-              flexShrink: 0
+            {/* Zap Icon in sculpted clay squircle */}
+            <div className="clay-icon" style={{
+              width: '58px',
+              height: '58px',
+              borderRadius: '18px',
+              background: 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-accent) 100%)',
+              color: '#ffffff',
+              boxShadow: 'var(--clay-btn-shadow)'
             }}>
               <Zap size={28} strokeWidth={2.5} />
             </div>
@@ -227,16 +223,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               textAlign: 'center'
             }}
           >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'rgba(234, 88, 12, 0.12)',
+            <div className="clay-icon" style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.18), rgba(245, 158, 11, 0.24))',
               color: 'var(--brand-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px'
+              marginBottom: '12px'
             }}>
               <UserPlus size={22} />
             </div>
@@ -259,16 +251,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               textAlign: 'center'
             }}
           >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'rgba(16, 185, 129, 0.12)',
+            <div className="clay-icon" style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(52, 211, 153, 0.24))',
               color: 'var(--status-online)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px'
+              marginBottom: '12px'
             }}>
               <Users size={22} />
             </div>
@@ -291,16 +279,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               textAlign: 'center'
             }}
           >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'rgba(2, 132, 199, 0.12)',
+            <div className="clay-icon" style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.18), rgba(56, 189, 248, 0.24))',
               color: 'var(--status-info)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px'
+              marginBottom: '12px'
             }}>
               <Globe size={22} />
             </div>
@@ -323,16 +307,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               textAlign: 'center'
             }}
           >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'rgba(245, 158, 11, 0.12)',
+            <div className="clay-icon" style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(251, 191, 36, 0.25))',
               color: 'var(--brand-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px'
+              marginBottom: '12px'
             }}>
               <UserCheck size={22} />
             </div>
@@ -355,16 +335,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               textAlign: 'center'
             }}
           >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'rgba(239, 68, 68, 0.12)',
+            <div className="clay-icon" style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(248, 113, 113, 0.24))',
               color: 'var(--status-danger)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px'
+              marginBottom: '12px'
             }}>
               <BarChart3 size={22} />
             </div>
@@ -387,16 +363,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               textAlign: 'center'
             }}
           >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              background: 'rgba(147, 51, 234, 0.12)',
+            <div className="clay-icon" style={{
+              width: '48px',
+              height: '48px',
+              background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.18), rgba(167, 139, 250, 0.24))',
               color: '#9333ea',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px'
+              marginBottom: '12px'
             }}>
               <ShieldCheck size={22} />
             </div>
@@ -428,15 +400,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {totalHostingAccounts}
             </div>
           </div>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'rgba(234, 88, 12, 0.15)',
-            color: 'var(--brand-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+          <div className="clay-icon" style={{
+            width: '50px',
+            height: '50px',
+            background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.18), rgba(245, 158, 11, 0.25))',
+            color: 'var(--brand-primary)'
           }}>
             <HardDrive size={24} />
           </div>
@@ -457,15 +425,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {totalDomains}
             </div>
           </div>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            color: 'var(--status-online)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+          <div className="clay-icon" style={{
+            width: '50px',
+            height: '50px',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(52, 211, 153, 0.25))',
+            color: 'var(--status-online)'
           }}>
             <Globe size={24} />
           </div>
@@ -486,15 +450,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {totalActive}
             </div>
           </div>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'rgba(2, 132, 199, 0.15)',
-            color: 'var(--status-info)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+          <div className="clay-icon" style={{
+            width: '50px',
+            height: '50px',
+            background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.18), rgba(56, 189, 248, 0.25))',
+            color: 'var(--status-info)'
           }}>
             <Database size={24} />
           </div>
@@ -515,15 +475,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {totalResellers}
             </div>
           </div>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'rgba(245, 158, 11, 0.15)',
-            color: 'var(--brand-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+          <div className="clay-icon" style={{
+            width: '50px',
+            height: '50px',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(251, 191, 36, 0.25))',
+            color: 'var(--brand-accent)'
           }}>
             <Users size={24} />
           </div>
@@ -531,12 +487,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Grid: System Information (Left) & Recent Accounts (Right) */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(320px, 1fr) minmax(400px, 1.8fr)',
-        gap: '20px',
-        alignItems: 'start'
-      }}>
+      <div className="dashboard-split-grid">
         {/* System Information Card */}
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>

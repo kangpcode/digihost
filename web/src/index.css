@@ -526,7 +526,17 @@ body::after {
   display: none;
 }
 
+.dashboard-split-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(380px, 1.8fr);
+  gap: 20px;
+  align-items: start;
+}
+
 @media (max-width: 960px) {
+  .dashboard-split-grid {
+    grid-template-columns: 1fr;
+  }
   .mobile-only-btn {
     display: inline-flex;
   }

@@ -31,6 +31,7 @@ import { BackupsView } from './components/BackupsView';
 import { FirewallView } from './components/FirewallView';
 import { apiFetch, logout, readSession, setUnauthorizedHandler, type SessionToken } from './api/client';
 import { LoginView } from './components/LoginView';
+import { CommandPalette } from './components/CommandPalette';
 import { getTranslation } from './i18n/translations';
 import type {
   UserRole,
@@ -102,6 +103,9 @@ export const App: React.FC = () => {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isSslManagerOpen, setIsSslManagerOpen] = useState(false);
   const [isMailManagerOpen, setIsMailManagerOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [brandName, setBrandName] = useState('');
 
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
@@ -209,6 +213,17 @@ export const App: React.FC = () => {
     apiFetch<{ version: string }>('/api/v1/health')
       .then((data) => setPanelVersion(data.version || ''))
       .catch(() => setPanelVersion(''));
+    apiFetch<{ branding?: { panelName?: string; primaryColor?: string } }>('/api/v1/branding')
+      .then((data) => {
+        if (data?.branding?.panelName) {
+          setBrandName(data.branding.panelName);
+          document.title = `${data.branding.panelName} - Control Panel`;
+        }
+        if (data?.branding?.primaryColor) {
+          document.documentElement.style.setProperty('--brand-primary', data.branding.primaryColor);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -222,12 +237,16 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsCommandPaletteOpen((open) => !open);
+        return;
+      }
       if (event.key !== '/') return;
       const target = event.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       event.preventDefault();
-      const input = document.querySelector('input[type="text"]') as HTMLInputElement | null;
-      input?.focus();
+      setIsCommandPaletteOpen(true);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -316,6 +335,7 @@ export const App: React.FC = () => {
         theme={theme}
         onThemeToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         onSignedIn={handleSignedIn}
+        brandName={brandName}
       />
     );
   }
@@ -335,6 +355,10 @@ export const App: React.FC = () => {
         onSearchChange={(query) => setSearchQuery(query)}
         onOpenTerminal={() => setIsTerminalOpen(true)}
         displayName={displayName}
+        hostname={systemMetrics.hostname}
+        brandName={brandName}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onToggleMobileMenu={() => setIsMobileSidebarOpen((open) => !open)}
         notifications={notifications}
       />
 
@@ -349,6 +373,8 @@ export const App: React.FC = () => {
           hostname={systemMetrics.hostname}
           kernel={systemMetrics.kernel}
           panelVersion={panelVersion}
+          mobileOpen={isMobileSidebarOpen}
+          onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
 
         <main className="content-area">
@@ -522,6 +548,25 @@ export const App: React.FC = () => {
         isOpen={isMailManagerOpen}
         onClose={() => setIsMailManagerOpen(false)}
         language={language}
+      />
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        language={language}
+        role={currentRole}
+        accounts={viewAccounts}
+        initialQuery={searchQuery}
+        onNavigateView={(view) => setActiveView(view)}
+        onOpenModal={(modal) => {
+          if (modal === 'new_account') setIsNewAccountOpen(true);
+          if (modal === 'dns') setIsDnsEditorOpen(true);
+          if (modal === 'ssl') setIsSslManagerOpen(true);
+          if (modal === 'mail') setIsMailManagerOpen(true);
+          if (modal === 'files') setIsFileManagerOpen(true);
+          if (modal === 'terminal') setIsTerminalOpen(true);
+        }}
+        onSelectAccount={handleSwitchToUser}
       />
     </div>
   );
