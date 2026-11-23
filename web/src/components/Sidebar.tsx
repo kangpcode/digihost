@@ -39,6 +39,8 @@ interface SidebarProps {
   hostname?: string;
   kernel?: string;
   panelVersion?: string;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -50,7 +52,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedCategory = 'all',
   hostname = '',
   kernel = '',
-  panelVersion = ''
+  panelVersion = '',
+  mobileOpen = false,
+  onCloseMobile
 }) => {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({

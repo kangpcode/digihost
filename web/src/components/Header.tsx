@@ -18,7 +18,8 @@ import {
   Network,
   Cpu,
   FileText,
-  LogOut
+  LogOut,
+  Menu
 } from 'lucide-react';
 import type { UserRole, Language, ThemeMode } from '../types';
 import { getTranslation } from '../i18n/translations';
@@ -41,6 +42,10 @@ interface HeaderProps {
   onSearchChange: (q: string) => void;
   onOpenTerminal: () => void;
   displayName?: string;
+  hostname?: string;
+  brandName?: string;
+  onOpenCommandPalette?: () => void;
+  onToggleMobileMenu?: () => void;
   notifications?: HeaderNotification[];
 }
 
@@ -57,6 +62,10 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   onOpenTerminal,
   displayName,
+  hostname,
+  brandName,
+  onOpenCommandPalette,
+  onToggleMobileMenu,
   notifications = []
 }) => {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
@@ -73,24 +82,36 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header style={{
-      height: '68px',
+      height: '70px',
       width: '100%',
       position: 'sticky',
       top: 0,
       zIndex: 100,
       background: 'var(--topbar-bg)',
-      backdropFilter: 'blur(20px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      backdropFilter: 'blur(24px) saturate(190%)',
+      WebkitBackdropFilter: 'blur(24px) saturate(190%)',
       borderBottom: '1px solid var(--glass-border)',
+      boxShadow: '0 8px 28px -12px rgba(15, 23, 42, 0.1)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '0 24px',
+      padding: '0 22px',
       boxSizing: 'border-box',
       transition: 'background 0.2s ease, border-color 0.2s ease'
     }}>
-      {/* Left: Brand Identity & Hostname & Quick Navigation Tabs */}
+      {/* Left: Mobile Menu + Brand Identity & Hostname & Quick Navigation Tabs */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            onClick={onToggleMobileMenu}
+            className="btn-icon mobile-only-btn"
+            aria-label={t('openMenu')}
+            title={t('openMenu')}
+          >
+            <Menu size={18} />
+          </button>
+        )}
         <div 
           onClick={() => {
             if (currentRole === 'admin') onViewChange('dashboard');
@@ -104,37 +125,31 @@ export const Header: React.FC<HeaderProps> = ({
             userSelect: 'none'
           }}
         >
-          <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+          <div className="clay-icon" style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '13px',
+            background: 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-accent) 100%)',
             color: '#ffffff',
-            boxShadow: '0 2px 10px rgba(234, 88, 12, 0.3)'
+            boxShadow: 'var(--clay-btn-shadow)'
           }}>
             <Zap size={20} strokeWidth={2.5} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ 
-              fontSize: '1.25rem', 
+              fontSize: '1.22rem', 
               fontWeight: 800, 
-              letterSpacing: '-0.02em', 
+              letterSpacing: '-0.025em', 
               color: 'var(--text-main)' 
             }}>
-              {t('brandName')}
+              {brandName || t('brandName')}
             </span>
-            <span style={{
-              fontSize: '0.68rem',
-              fontWeight: 700,
+            <span className="badge-pill" style={{
+              fontSize: '0.67rem',
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
-              background: currentRole === 'admin' ? 'rgba(234, 88, 12, 0.15)' : 'rgba(2, 132, 199, 0.15)',
+              background: currentRole === 'admin' ? 'var(--brand-primary-light)' : 'var(--status-info-bg)',
               color: currentRole === 'admin' ? 'var(--brand-primary)' : 'var(--status-info)',
-              padding: '2px 7px',
-              borderRadius: '6px',
               border: `1px solid ${currentRole === 'admin' ? 'var(--brand-primary-border)' : 'rgba(2, 132, 199, 0.3)'}`
             }}>
               {roleLabels[currentRole]}
@@ -142,44 +157,31 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Hostname Chip (matching AdminBolt / cPanel header) */}
-        <div style={{
+        {/* Hostname Chip */}
+        <div className="desktop-hostname-chip" style={{
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
-          background: 'rgba(148, 163, 184, 0.08)',
+          background: 'var(--glass-surface)',
           border: '1px solid var(--glass-border)',
-          borderRadius: '20px',
-          padding: '4px 12px',
-          fontSize: '0.78rem'
+          boxShadow: 'var(--clay-inset)',
+          borderRadius: '999px',
+          padding: '5px 12px',
+          fontSize: '0.76rem'
         }}>
-          <Server size={13} style={{ color: 'var(--text-muted)' }} />
+          <Server size={13} style={{ color: 'var(--brand-primary)' }} />
           <span style={{ color: 'var(--text-muted)' }}>{t('hostnameLabel')}:</span>
           <span className="font-mono" style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-            panel.digihost.id
+            {hostname || 'localhost'}
           </span>
         </div>
 
-        {/* Quick View Navigation Tabs (Matching Image) */}
+        {/* Quick View Navigation Tabs */}
         {currentRole === 'admin' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+          <div className="desktop-nav-pills" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
             <button
               onClick={() => onViewChange('dashboard')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: activeView === 'dashboard' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
-                background: activeView === 'dashboard' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
-                color: activeView === 'dashboard' ? '#ffffff' : 'var(--text-main)',
-                boxShadow: activeView === 'dashboard' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
+              className={activeView === 'dashboard' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
             >
               <Activity size={14} />
               <span>{t('navDashboard')}</span>
@@ -187,21 +189,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => onViewChange('cluster')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: activeView === 'cluster' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
-                background: activeView === 'cluster' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
-                color: activeView === 'cluster' ? '#ffffff' : 'var(--text-main)',
-                boxShadow: activeView === 'cluster' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
+              className={activeView === 'cluster' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
             >
               <Network size={14} />
               <span>{t('navCluster')}</span>
@@ -209,21 +197,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => onViewChange('runtimes')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: activeView === 'runtimes' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
-                background: activeView === 'runtimes' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
-                color: activeView === 'runtimes' ? '#ffffff' : 'var(--text-main)',
-                boxShadow: activeView === 'runtimes' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
+              className={activeView === 'runtimes' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
             >
               <Cpu size={14} />
               <span>{t('navSoftware')}</span>
@@ -231,21 +205,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => onViewChange('billing')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: activeView === 'billing' ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid var(--glass-border)',
-                background: activeView === 'billing' ? 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' : 'rgba(148, 163, 184, 0.08)',
-                color: activeView === 'billing' ? '#ffffff' : 'var(--text-main)',
-                boxShadow: activeView === 'billing' ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
+              className={activeView === 'billing' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
             >
               <FileText size={14} />
               <span>{t('navBilling')}</span>
@@ -254,8 +214,8 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </div>
 
-      {/* Center: Global Search Bar */}
-      <div style={{ flex: '1', maxWidth: '300px', minWidth: '120px', position: 'relative', margin: '0 16px' }}>
+      {/* Center: Global Search / Command Palette Trigger */}
+      <div style={{ flex: '1', maxWidth: '300px', minWidth: '120px', position: 'relative', margin: '0 14px' }}>
         <Search 
           size={15} 
           style={{ 
@@ -263,31 +223,39 @@ export const Header: React.FC<HeaderProps> = ({
             left: '12px', 
             top: '50%', 
             transform: 'translateY(-50%)', 
-            color: 'var(--text-muted)' 
+            color: 'var(--brand-primary)' 
           }} 
         />
         <input 
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
+          onFocus={() => onOpenCommandPalette?.()}
           placeholder={t('searchPlaceholder')}
           className="input-glass"
-          style={{ paddingLeft: '36px', paddingRight: '36px', height: '36px', fontSize: '0.82rem' }}
+          style={{ paddingLeft: '36px', paddingRight: '58px', height: '38px', fontSize: '0.82rem', cursor: 'pointer' }}
         />
-        <span style={{
-          position: 'absolute',
-          right: '10px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          fontSize: '0.68rem',
-          padding: '1px 5px',
-          borderRadius: '4px',
-          background: 'rgba(148, 163, 184, 0.15)',
-          color: 'var(--text-muted)',
-          fontFamily: 'var(--font-mono)'
-        }}>
-          /
-        </span>
+        <button
+          type="button"
+          onClick={() => onOpenCommandPalette?.()}
+          style={{
+            position: 'absolute',
+            right: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '0.67rem',
+            fontWeight: 700,
+            padding: '2px 7px',
+            borderRadius: '8px',
+            border: '1px solid var(--glass-border)',
+            background: 'var(--glass-surface)',
+            color: 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)',
+            cursor: 'pointer'
+          }}
+        >
+          {t('cmdPaletteShortcut')}
+        </button>
       </div>
 
       {/* Right Controls */}
