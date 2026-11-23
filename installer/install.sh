@@ -277,7 +277,10 @@ check_prerequisites() {
 
     # Check Free Disk Space on /
     local free_disk_mb
-    free_disk_mb=$(df -m / | awk 'NR==2 {print $4}')
+    free_disk_mb=$(df -Pm / | awk 'NR==2 {print $4}')
+    if [[ ! "$free_disk_mb" =~ ^[0-9]+$ ]]; then
+        free_disk_mb=0
+    fi
     if [[ $free_disk_mb -lt 5000 && $DRY_RUN -eq 0 && $FORCE_INSTALL -eq 0 ]]; then
         log_error "Insufficient disk space: ${free_disk_mb}MB free. Minimum 5000MB required."
         exit 1

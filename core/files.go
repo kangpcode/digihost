@@ -212,6 +212,232 @@ func (state *ServerState) handleFileContent(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// resolveAccountTargetForWrite resolves a target path inside an account home
+// directory for creating, updating, or removing an entry. It evaluates symlinks
+// on the deepest existing ancestor so a symlink inside the home tree can never
+// redirect a write outside it.
+func (state *ServerState) resolveAccountTargetForWrite(username, relative string) (string, *hosting.HostingAccount, error) {
+	account, err := state.HostingManager.GetAccount(username)
+	if err != nil {
+		return "", nil, err
+	}
+
+	clean := strings.TrimSpace(relative)
+	if strings.ContainsRune(clean, 0) {
+		return "", nil, errors.New("invalid path")
+	}
+	clean = strings.TrimPrefix(clean, "/")
+	if clean == "" || clean == "." {
+		return "", nil, errors.New("cannot overwrite account root directory")
+	}
+
+	home := filepath.Clean(account.HomeDir)
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return "", nil, err
+	}
+	candidate := filepath.Join(realHome, filepath.Clean(clean))
+	if candidate == realHome || !strings.HasPrefix(candidate, realHome+string(os.PathSeparator)) {
+		return "", nil, errors.New("path escapes the account home directory")
+	}
+
+	// Verify parent directory symlink resolution stays inside realHome.
+	parent := filepath.Dir(candidate)
+	probe := parent
+	for {
+		if _, err := os.Stat(probe); err == nil {
+			resolvedParent, err := filepath.EvalSymlinks(probe)
+			if err != nil {
+				return "", nil, err
+			}
+			if resolvedParent != realHome && !strings.HasPrefix(resolvedParent, realHome+string(os.PathSeparator)) {
+				return "", nil, errors.New("path escapes the account home directory")
+			}
+			break
+		}
+		next := filepath.Dir(probe)
+		if next == probe || len(next) < len(realHome) {
+			return "", nil, errors.New("path escapes the account home directory")
+		}
+		probe = next
+	}
+
+	// If target itself exists and is a symlink, verify its target too.
+	if info, err := os.Lstat(candidate); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		resolvedTarget, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return "", nil, errors.New("symlink target cannot be resolved safely")
+		}
+		if resolvedTarget != realHome && !strings.HasPrefix(resolvedTarget, realHome+string(os.PathSeparator)) {
+			return "", nil, errors.New("path escapes the account home directory")
+		}
+	}
+
+	return candidate, account, nil
+}
+
+func (state *ServerState) handleFileWrite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		File     string `json:"file"`
+		Content  string `json:"content"`
+	}
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	if username == "" || strings.TrimSpace(req.File) == "" {
+		writeAPIError(w, "username and file are required", http.StatusBadRequest)
+		return
+	}
+	if err := state.authorizeAccountScope(r, username); err != nil {
+		writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+		return
+	}
+	if len(req.Content) > 2*1024*1024 {
+		writeAPIError(w, "content exceeds 2 MB write limit", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	target, _, err := state.resolveAccountTargetForWrite(username, req.File)
+	if err != nil {
+		writeFileError(w, err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		writeFileError(w, err)
+		return
+	}
+	if err := os.WriteFile(target, []byte(req.Content), 0644); err != nil {
+		writeFileError(w, err)
+		return
+	}
+	state.AuditLogger.Append(state.actorUsername(r), "files.write", "file", req.File,
+		`{"username":"`+username+`"}`, clientIP(r, state.TrustedProxies))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"written": true, "path": req.File, "bytes": len(req.Content)})
+}
+
+func (state *ServerState) handleFileMkdir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		Path     string `json:"path"`
+	}
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	if username == "" || strings.TrimSpace(req.Path) == "" {
+		writeAPIError(w, "username and path are required", http.StatusBadRequest)
+		return
+	}
+	if err := state.authorizeAccountScope(r, username); err != nil {
+		writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+		return
+	}
+	target, _, err := state.resolveAccountTargetForWrite(username, req.Path)
+	if err != nil {
+		writeFileError(w, err)
+		return
+	}
+	if err := os.MkdirAll(target, 0755); err != nil {
+		writeFileError(w, err)
+		return
+	}
+	state.AuditLogger.Append(state.actorUsername(r), "files.mkdir", "file", req.Path,
+		`{"username":"`+username+`"}`, clientIP(r, state.TrustedProxies))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{"created": true, "path": req.Path})
+}
+
+func (state *ServerState) handleFileRename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		From     string `json:"from"`
+		To       string `json:"to"`
+	}
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, "Invalid payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	if username == "" || strings.TrimSpace(req.From) == "" || strings.TrimSpace(req.To) == "" {
+		writeAPIError(w, "username, from, and to are required", http.StatusBadRequest)
+		return
+	}
+	if err := state.authorizeAccountScope(r, username); err != nil {
+		writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+		return
+	}
+	src, _, err := state.resolveAccountPath(username, req.From)
+	if err != nil {
+		writeFileError(w, err)
+		return
+	}
+	dst, _, err := state.resolveAccountTargetForWrite(username, req.To)
+	if err != nil {
+		writeFileError(w, err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		writeFileError(w, err)
+		return
+	}
+	if err := os.Rename(src, dst); err != nil {
+		writeFileError(w, err)
+		return
+	}
+	state.AuditLogger.Append(state.actorUsername(r), "files.rename", "file", req.From,
+		`{"username":"`+username+`","to":"`+req.To+`"}`, clientIP(r, state.TrustedProxies))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"renamed": true, "from": req.From, "to": req.To})
+}
+
+func (state *ServerState) handleFileDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	username := strings.TrimSpace(r.URL.Query().Get("username"))
+	pathParam := strings.TrimSpace(r.URL.Query().Get("path"))
+	if username == "" || pathParam == "" {
+		writeAPIError(w, "username and path are required", http.StatusBadRequest)
+		return
+	}
+	if err := state.authorizeAccountScope(r, username); err != nil {
+		writeAPIError(w, "This account is outside your granted scope", http.StatusForbidden)
+		return
+	}
+	target, _, err := state.resolveAccountTargetForWrite(username, pathParam)
+	if err != nil {
+		writeFileError(w, err)
+		return
+	}
+	if err := os.RemoveAll(target); err != nil {
+		writeFileError(w, err)
+		return
+	}
+	state.AuditLogger.Append(state.actorUsername(r), "files.delete", "file", pathParam,
+		`{"username":"`+username+`"}`, clientIP(r, state.TrustedProxies))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"deleted": true, "path": pathParam})
+}
+
 func writeFileError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	switch {
