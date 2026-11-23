@@ -2,7 +2,7 @@
 // Liquid Glass + Claymorphism instant navigation across views, tools, and accounts.
 // Zero emojis, full i18n, keyboard navigable.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Search,
   Activity,
@@ -62,42 +62,36 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [query, setQuery] = useState(initialQuery);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  useEffect(() => {
-    if (isOpen) {
-      setQuery(initialQuery);
-      setSelectedIndex(0);
-    }
-  }, [isOpen, initialQuery]);
-
   const items = useMemo<PaletteItem[]>(() => {
+    const tr = (key: any) => getTranslation(language, key);
     const viewItems: PaletteItem[] = [
-      { id: 'v-dash', group: 'views', label: role === 'user' ? t('navHome') : t('navDashboard'), icon: Activity, run: () => onNavigateView(role === 'user' ? 'home' : 'dashboard') },
-      { id: 'v-apps', group: 'views', label: t('navAppMarketplace'), icon: Boxes, run: () => onNavigateView('apps') },
-      { id: 'v-runtimes', group: 'views', label: t('navRuntimes'), icon: Cpu, run: () => onNavigateView('runtimes') },
-      { id: 'v-db', group: 'views', label: t('navDatabases'), icon: Database, run: () => onNavigateView('databases') },
-      { id: 'v-bak', group: 'views', label: t('navBackups'), icon: HardDrive, run: () => onNavigateView('backups') },
-      { id: 'v-bill', group: 'views', label: t('navBilling'), icon: FileText, run: () => onNavigateView('billing') },
-      { id: 'v-stat', group: 'views', label: t('navServerStatus'), icon: Activity, run: () => onNavigateView('server_status') },
+      { id: 'v-dash', group: 'views', label: role === 'user' ? tr('navHome') : tr('navDashboard'), icon: Activity, run: () => onNavigateView(role === 'user' ? 'home' : 'dashboard') },
+      { id: 'v-apps', group: 'views', label: tr('navAppMarketplace'), icon: Boxes, run: () => onNavigateView('apps') },
+      { id: 'v-runtimes', group: 'views', label: tr('navRuntimes'), icon: Cpu, run: () => onNavigateView('runtimes') },
+      { id: 'v-db', group: 'views', label: tr('navDatabases'), icon: Database, run: () => onNavigateView('databases') },
+      { id: 'v-bak', group: 'views', label: tr('navBackups'), icon: HardDrive, run: () => onNavigateView('backups') },
+      { id: 'v-bill', group: 'views', label: tr('navBilling'), icon: FileText, run: () => onNavigateView('billing') },
+      { id: 'v-stat', group: 'views', label: tr('navServerStatus'), icon: Activity, run: () => onNavigateView('server_status') },
     ];
     if (role === 'admin') {
       viewItems.push(
-        { id: 'v-cluster', group: 'views', label: t('navHubDashboard'), icon: Network, run: () => onNavigateView('cluster') },
-        { id: 'v-accts', group: 'views', label: t('actionAllAccounts'), icon: Users, run: () => onNavigateView('accounts_list') },
-        { id: 'v-fw', group: 'views', label: t('navFirewall'), icon: ShieldAlert, run: () => onNavigateView('firewall') },
-        { id: 'v-audit', group: 'views', label: t('auditTitle'), icon: ShieldCheck, run: () => onNavigateView('audit') }
+        { id: 'v-cluster', group: 'views', label: tr('navHubDashboard'), icon: Network, run: () => onNavigateView('cluster') },
+        { id: 'v-accts', group: 'views', label: tr('actionAllAccounts'), icon: Users, run: () => onNavigateView('accounts_list') },
+        { id: 'v-fw', group: 'views', label: tr('navFirewall'), icon: ShieldAlert, run: () => onNavigateView('firewall') },
+        { id: 'v-audit', group: 'views', label: tr('auditTitle'), icon: ShieldCheck, run: () => onNavigateView('audit') }
       );
     }
 
     const actionItems: PaletteItem[] = [
-      { id: 'a-dns', group: 'actions', label: t('modalDnsEditorTitle'), icon: Globe, run: () => onOpenModal('dns') },
-      { id: 'a-ssl', group: 'actions', label: t('sslManagerTitle'), icon: ShieldCheck, run: () => onOpenModal('ssl') },
-      { id: 'a-mail', group: 'actions', label: t('mailManagerTitle'), icon: Mail, run: () => onOpenModal('mail') },
-      { id: 'a-files', group: 'actions', label: t('navFiles'), icon: Folder, run: () => onOpenModal('files') },
-      { id: 'a-term', group: 'actions', label: t('terminalTitle'), icon: Terminal, run: () => onOpenModal('terminal') },
+      { id: 'a-dns', group: 'actions', label: tr('modalDnsEditorTitle'), icon: Globe, run: () => onOpenModal('dns') },
+      { id: 'a-ssl', group: 'actions', label: tr('sslManagerTitle'), icon: ShieldCheck, run: () => onOpenModal('ssl') },
+      { id: 'a-mail', group: 'actions', label: tr('mailManagerTitle'), icon: Mail, run: () => onOpenModal('mail') },
+      { id: 'a-files', group: 'actions', label: tr('navFiles'), icon: Folder, run: () => onOpenModal('files') },
+      { id: 'a-term', group: 'actions', label: tr('terminalTitle'), icon: Terminal, run: () => onOpenModal('terminal') },
     ];
     if (role !== 'user') {
       actionItems.unshift({
-        id: 'a-new', group: 'actions', label: t('actionNewAccount'), icon: UserPlus, run: () => onOpenModal('new_account')
+        id: 'a-new', group: 'actions', label: tr('actionNewAccount'), icon: UserPlus, run: () => onOpenModal('new_account')
       });
     }
 
@@ -120,9 +114,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     );
   }, [accounts, language, onNavigateView, onOpenModal, onSelectAccount, query, role]);
 
-  useEffect(() => {
-    setSelectedIndex((prev) => (items.length === 0 ? 0 : Math.min(prev, items.length - 1)));
-  }, [items]);
+  const activeIndex = items.length === 0 ? 0 : Math.min(selectedIndex, items.length - 1);
 
   if (!isOpen) return null;
 
@@ -134,17 +126,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
     if (e.key === 'ArrowDown' && items.length > 0) {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % items.length);
+      setSelectedIndex((activeIndex + 1) % items.length);
       return;
     }
     if (e.key === 'ArrowUp' && items.length > 0) {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + items.length) % items.length);
+      setSelectedIndex((activeIndex - 1 + items.length) % items.length);
       return;
     }
-    if (e.key === 'Enter' && items[selectedIndex]) {
+    if (e.key === 'Enter' && items[activeIndex]) {
       e.preventDefault();
-      items[selectedIndex].run();
+      items[activeIndex].run();
       onClose();
     }
   };
@@ -188,7 +180,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </div>
           ) : (
             items.map((item, idx) => {
-              const active = idx === selectedIndex;
+              const active = idx === activeIndex;
               const prevGroup = idx > 0 ? items[idx - 1].group : null;
               return (
                 <React.Fragment key={item.id}>

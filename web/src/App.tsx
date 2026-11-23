@@ -550,24 +550,26 @@ export const App: React.FC = () => {
         language={language}
       />
 
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        language={language}
-        role={currentRole}
-        accounts={viewAccounts}
-        initialQuery={searchQuery}
-        onNavigateView={(view) => setActiveView(view)}
-        onOpenModal={(modal) => {
-          if (modal === 'new_account') setIsNewAccountOpen(true);
-          if (modal === 'dns') setIsDnsEditorOpen(true);
-          if (modal === 'ssl') setIsSslManagerOpen(true);
-          if (modal === 'mail') setIsMailManagerOpen(true);
-          if (modal === 'files') setIsFileManagerOpen(true);
-          if (modal === 'terminal') setIsTerminalOpen(true);
-        }}
-        onSelectAccount={handleSwitchToUser}
-      />
+      {isCommandPaletteOpen ? (
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          language={language}
+          role={currentRole}
+          accounts={viewAccounts}
+          initialQuery={searchQuery}
+          onNavigateView={(view) => setActiveView(view)}
+          onOpenModal={(modal) => {
+            if (modal === 'new_account') setIsNewAccountOpen(true);
+            if (modal === 'dns') setIsDnsEditorOpen(true);
+            if (modal === 'ssl') setIsSslManagerOpen(true);
+            if (modal === 'mail') setIsMailManagerOpen(true);
+            if (modal === 'files') setIsFileManagerOpen(true);
+            if (modal === 'terminal') setIsTerminalOpen(true);
+          }}
+          onSelectAccount={handleSwitchToUser}
+        />
+      ) : null}
     </div>
   );
 };
